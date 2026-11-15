@@ -1,0 +1,20 @@
+{
+  "name": "example-vue-vite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "DOMIRROR=1 vite",
+    "build": "vite build",
+    "build:domirror": "DOMIRROR=1 vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "3.5.45"
+  },
+  "devDependencies": {
+    "@domirror/plugin": "workspace:*",
+    "@vitejs/plugin-vue": "6.0.11",
+    "vite": "8.3.8"
+  }
+}

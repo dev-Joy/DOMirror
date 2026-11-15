@@ -1,7 +1,7 @@
 ---
 id: INT-001
 title: 브라우저 클릭 CSS 수정의 소스 코드 반영 (프레임워크 무관 DOM→소스 매핑)
-status: planned
+status: active
 priority: P2
 created: 2026-11-15
 updated: 2026-11-15
