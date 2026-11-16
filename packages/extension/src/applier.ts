@@ -47,10 +47,17 @@ export function restoreStyle(el: StyledElement, property: string, prev: PrevInli
   if (options.removeEmptyStyleAttribute && el.style.length === 0 && el.hasAttribute('style')) el.removeAttribute('style');
 }
 
+interface ElementState {
+  /** 이 항목에서 이 요소를 처음 건드리기 전 인라인 값(되돌리기 기준). */
+  prev: PrevInline;
+  /** 이 요소의 원래 값(처음 건드릴 때 readBefore의 authored ?? computed, trim). 편집값이 같으면 이 요소만 원복한다. */
+  original: string;
+}
+
 interface KeyRecord {
   property: string;
-  /** 이 변경 항목이 시작될 때의 요소별 인라인 값. 같은 소스의 여러 요소(E-2)를 함께 원복한다. */
-  prevs: Map<StyledElement, PrevInline>;
+  /** 같은 소스의 여러 요소(E-2)별 상태. 불변식: record가 있으면 1개 이상. */
+  elements: Map<StyledElement, ElementState>;
 }
 
 /**
@@ -63,7 +70,16 @@ export class AppliedStyles {
   /** 처음 손대기 전 `style` 속성이 있었는지. */
   readonly #hadStyleAttribute = new Map<StyledElement, boolean>();
 
-  apply(key: string, el: StyledElement, property: string, value: string): void {
+  #restoreOptions(el: StyledElement): RestoreOptions {
+    return { removeEmptyStyleAttribute: this.#hadStyleAttribute.get(el) === false };
+  }
+
+  /**
+   * 적용한다. `original`은 이 요소의 원래 값으로, 이 항목에서 요소를 처음 건드릴 때만 쓴다.
+   * 편집값이 그 요소의 원래 값과 같으면 그 요소만 원복한다(D-2).
+   * 반환값: key에 원래 값과 다른 요소가 남아 있는지(false면 호출 측이 항목을 지운다).
+   */
+  apply(key: string, el: StyledElement, property: string, value: string, original: string): boolean {
     if (!this.#hadStyleAttribute.has(el)) this.#hadStyleAttribute.set(el, el.hasAttribute('style'));
     const prev = applyStyle(el, property, value);
 
@@ -72,18 +88,26 @@ export class AppliedStyles {
     if (!originals.has(property)) originals.set(property, prev);
 
     let record = this.#byKey.get(key);
-    if (!record) this.#byKey.set(key, (record = { property, prevs: new Map() }));
-    if (!record.prevs.has(el)) record.prevs.set(el, prev);
+    if (!record) this.#byKey.set(key, (record = { property, elements: new Map() }));
+    let state = record.elements.get(el);
+    if (!state) record.elements.set(el, (state = { prev, original: original.trim() }));
+    if (value.trim() === state.original) {
+      restoreStyle(el, property, state.prev, this.#restoreOptions(el));
+      record.elements.delete(el);
+    }
+    if (record.elements.size === 0) {
+      this.#byKey.delete(key);
+      return false;
+    }
+    return true;
   }
 
-  /** 변경 항목 시작 전 인라인 값으로 되돌린다(FR-8). 추적 중이 아니면(복원된 항목 등) 아무것도 하지 않는다. */
+  /** 변경 항목의 각 요소를 자기 편집 전 인라인 값으로 되돌린다(FR-8). 추적 중이 아니면(복원된 항목 등) 아무것도 하지 않는다. */
   revert(key: string): void {
     const record = this.#byKey.get(key);
     if (!record) return;
     this.#byKey.delete(key);
-    for (const [el, prev] of record.prevs) {
-      restoreStyle(el, record.property, prev, { removeEmptyStyleAttribute: this.#hadStyleAttribute.get(el) === false });
-    }
+    for (const [el, state] of record.elements) restoreStyle(el, record.property, state.prev, this.#restoreOptions(el));
   }
 
   /** 항목에 속한 요소별 현재 인라인 값(전송 시점 스냅숏). */
@@ -91,45 +115,54 @@ export class AppliedStyles {
     const out = new Map<StyledElement, PrevInline>();
     const record = this.#byKey.get(key);
     if (!record) return out;
-    for (const el of record.prevs.keys()) {
+    for (const el of record.elements.keys()) {
       out.set(el, { value: el.style.getPropertyValue(record.property), priority: el.style.getPropertyPriority(record.property) });
     }
     return out;
   }
 
-  /** 전송 중 재편집된 항목: 원복 기준을 보낸 시점 값으로 바꾼다(전송 후 재편집과 같은 결과). */
-  rebase(key: string, snapshot: ReadonlyMap<StyledElement, PrevInline>): void {
-    const record = this.#byKey.get(key);
-    if (!record) return;
-    for (const [el, prev] of snapshot) if (record.prevs.has(el)) record.prevs.set(el, prev);
+  /**
+   * 전송 성공(D-1·R-2): 스냅숏 요소 중 지금 인라인이 스냅숏과 다르면 보낸 시점 값을 원복 기준으로, 보낸 값을 원래 값으로 (다시) 추적한다.
+   * 스냅숏 그대로이거나 분리된 요소는 추적에서 뺀다. 스냅숏에 없는 요소(전송 중 새로 편집)는 그대로 둔다.
+   * 반환값: key에 추적 중인 요소가 남아 있는지.
+   */
+  settle(key: string, property: string, snapshot: ReadonlyMap<StyledElement, PrevInline>, sentValue: string): boolean {
+    const record = this.#byKey.get(key) ?? { property, elements: new Map<StyledElement, ElementState>() };
+    for (const [el, snap] of snapshot) {
+      const same = el.style.getPropertyValue(property) === snap.value && el.style.getPropertyPriority(property) === snap.priority;
+      if (!el.isConnected || same) record.elements.delete(el);
+      else record.elements.set(el, { prev: snap, original: sentValue.trim() });
+    }
+    if (record.elements.size === 0) {
+      this.#byKey.delete(key);
+      return false;
+    }
+    this.#byKey.set(key, record);
+    return true;
   }
 
   /**
    * 문서에서 분리된 요소를 항목 단위 원복 대상에서 빼고, 요소를 잃은 key를 돌려준다(E-6·HMR).
-   * 끌 때 원복(restoreAll)용 최초 값은 다시 붙는 경우를 위해 남긴다.
+   * 요소가 하나도 남지 않은 항목은 지운다. 끌 때 원복(restoreAll)용 최초 값은 다시 붙는 경우를 위해 남긴다.
    */
   pruneDetached(): Set<string> {
     const keys = new Set<string>();
     for (const [key, record] of this.#byKey) {
-      for (const el of record.prevs.keys()) {
+      for (const el of record.elements.keys()) {
         if (el.isConnected) continue;
-        record.prevs.delete(el);
+        record.elements.delete(el);
         keys.add(key);
       }
+      if (record.elements.size === 0) this.#byKey.delete(key);
     }
     return keys;
-  }
-
-  /** 전송된 항목: 페이지 표시는 유지하고 항목 단위 원복 대상에서만 뺀다. */
-  forget(key: string): void {
-    this.#byKey.delete(key);
   }
 
   /** 처음 손대기 전 상태로 모두 되돌린다(NFR-3). */
   restoreAll(): void {
     for (const [el, originals] of this.#originals) {
-      const removeEmptyStyleAttribute = this.#hadStyleAttribute.get(el) === false;
-      for (const [property, prev] of originals) restoreStyle(el, property, prev, { removeEmptyStyleAttribute });
+      const options = this.#restoreOptions(el);
+      for (const [property, prev] of originals) restoreStyle(el, property, prev, options);
     }
     this.#byKey.clear();
     this.#originals.clear();

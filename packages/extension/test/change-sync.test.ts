@@ -42,7 +42,7 @@ class Tab {
     return this.sync.save(diff);
   }
   edit(c: LocalChange): Promise<void> {
-    return this.set(recordChange(this.log, c));
+    return this.set(recordChange(this.log, c, true));
   }
   /** 불러오기 완료(활성화 직후 비동기). */
   loaded(entries: unknown[]): Promise<void> {

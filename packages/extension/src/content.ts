@@ -1,19 +1,8 @@
 import { DEFAULT_PORT, formatSourceLocation, type ContentToWorkerMessage, type SendResult, type StyleChangeInput } from '@domirror/shared';
-import { AppliedStyles, type PrevInline, type StyledElement } from './applier.js';
-import {
-  changeKey,
-  diffLog,
-  markStale,
-  mergeLoaded,
-  recordChange,
-  removeChange,
-  removeSent,
-  restoreStale,
-  sendable,
-  type LocalChange,
-} from './change-log.js';
+import { diffLog, mergeLoaded, restoreStale, type LocalChange } from './change-log.js';
 import { ChangeSync, type LogDiff } from './change-sync.js';
 import { readBefore } from './css-read.js';
+import { EditTracker } from './edit-tracker.js';
 import {
   createSelectionHighlight,
   EDITOR_CSS,
@@ -89,8 +78,8 @@ interface Panel {
 interface SendHandlers {
   /** 전송할 변경 목록 스냅샷과 위치가 없어 제외된 건수. */
   collect(): { changes: StyleChangeInput[]; excluded: number };
-  /** 전송 성공 시 보낸 항목을 받는다(로컬 목록에서 제거, E-4). */
-  onSent(changes: StyleChangeInput[]): void;
+  /** 전송 성공 시 보낸 항목을 받아 정산하고(E-4·D-1), 새로 만든 "보낸 값 → 원래 값" 보정 항목 건수를 돌려준다. */
+  onSent(changes: StyleChangeInput[]): number;
 }
 
 function errorMessage(error: unknown): string {
@@ -192,8 +181,9 @@ function createPanel(handlers: SendHandlers): Panel {
       if (!result) {
         setStatus('error', '전송 실패: 익스텐션 응답이 없습니다');
       } else if (result.ok) {
-        if (!disposed) handlers.onSent(changes);
-        setStatus('ok', `전송 완료: ${result.accepted}건${excludedNote}`);
+        const compensated = disposed ? 0 : handlers.onSent(changes);
+        const note = compensated > 0 ? ` · 응답 전에 되돌리거나 원래 값으로 고친 ${compensated}건은 '보낸 값 → 원래 값' 항목으로 남겼습니다` : '';
+        setStatus('ok', `전송 완료: ${result.accepted}건${excludedNote}${note}`);
       } else {
         // 실패 시 변경 내역은 그대로 둔다(E-4).
         setStatus('error', `전송 실패 (포트 ${port}): ${result.error}`);
@@ -241,11 +231,10 @@ function isStyled(el: Element): el is HTMLElement | SVGElement {
 class EditSession {
   readonly #panel: Panel;
   readonly #highlight: SelectionHighlight;
-  readonly #applied = new AppliedStyles();
+  /** 적용 이력·전송 중 스냅숏과 내역 조정(FR-6~9). */
+  readonly #tracker = new EditTracker();
   readonly #origin = location.origin;
   readonly #sync: ChangeSync;
-  /** 전송 중인 항목 id별 요소 인라인 값 스냅숏(전송 중 재편집 시 원복 기준, R-2). */
-  #inflight = new Map<string, Map<StyledElement, PrevInline>>();
   /** 편집한 요소가 HMR 등으로 교체되는지 감시한다(E-6). 패널 Shadow 내부는 관찰되지 않는다. */
   readonly #observer = new MutationObserver(() => this.#checkDetached());
   #selected: Element | null = null;
@@ -289,24 +278,15 @@ class EditSession {
   }
 
   collect(): { changes: StyleChangeInput[]; excluded: number } {
-    const changes = sendable(this.#log);
-    this.#inflight = new Map(changes.map((c) => [c.id, this.#applied.snapshot(changeKey(c))]));
+    const changes = this.#tracker.beginSend(this.#log);
     return { changes, excluded: this.#log.length - changes.length };
   }
 
-  onSent(sent: StyleChangeInput[]): void {
-    const sentAfter = new Map(sent.map((c) => [c.id, c.after]));
-    for (const c of this.#log) {
-      const after = sentAfter.get(c.id);
-      if (after === undefined) continue;
-      const key = changeKey(c);
-      // 그대로 보낸 항목은 페이지 표시를 유지하되 되돌리기 대상에서 뺀다.
-      // 전송 중 재편집된 항목은 보낸 시점 값을 원복 기준으로 삼는다(전송 후 재편집과 같은 결과).
-      if (after === c.after) this.#applied.forget(key);
-      else this.#applied.rebase(key, this.#inflight.get(c.id) ?? new Map());
-    }
-    this.#inflight = new Map();
-    this.#setLog(removeSent(this.#log, sent, { newId, now: new Date().toISOString() }));
+  /** 전송 성공 정산. 반환값은 "보낸 값 → 원래 값" 보정 항목 건수(D-1). */
+  onSent(sent: StyleChangeInput[]): number {
+    const { log, compensated } = this.#tracker.endSend(this.#log, sent, { newId, now: new Date().toISOString() });
+    this.#setLog(log);
+    return compensated;
   }
 
   dispose(): void {
@@ -314,7 +294,7 @@ class EditSession {
     this.#observer.disconnect();
     this.#highlight.dispose();
     // 페이지 표시는 원복하고 내역은 저장소에 남긴다(NFR-3·E-6).
-    this.#applied.restoreAll();
+    this.#tracker.restoreAll();
   }
 
   #edit(property: string, raw: string): void {
@@ -340,40 +320,35 @@ class EditSession {
       source: located ? { ...located.location, inherited: located.inherited } : null,
       selectorHint: selectorHint(el),
       property,
-      // 적용 전에 읽는다. 같은 key의 연속 편집이면 recordChange가 최초 값을 유지한다.
+      // 적용 전에 읽는다(이 요소의 원래 값 판정에도 쓴다). 같은 key의 연속 편집이면 recordChange가 최초 값을 유지한다.
       before: readBefore(el, property),
       after: value,
       pageUrl: location.href,
       createdAt: new Date().toISOString(),
       stale: false,
     };
-    const key = changeKey(change);
-    this.#applied.apply(key, el, property, value);
-    const next = recordChange(this.#log, change);
-    // 원래 값으로 돌아와 항목이 없어졌으면 인라인 스타일도 원복한다.
-    if (!next.some((c) => changeKey(c) === key)) this.#applied.revert(key);
+    // 요소가 자기 원래 값으로 돌아오면 그 요소만 원복하고, 모든 요소가 원래 값이면 항목을 지운다(D-2).
+    const next = this.#tracker.edit(this.#log, el, change);
     this.#panel.setStatus('info', `${property}: ${value} 적용`);
     this.#setLog(next);
   }
 
   #revert(id: string): void {
-    const target = this.#log.find((c) => c.id === id);
-    if (!target) return;
-    this.#applied.revert(changeKey(target));
-    this.#setLog(removeChange(this.#log, id));
+    const next = this.#tracker.revert(this.#log, id);
+    if (next === this.#log) return;
+    this.#setLog(next);
     this.#renderEditor();
   }
 
   #revertAll(): void {
-    for (const c of this.#log) this.#applied.revert(changeKey(c));
-    this.#setLog([]);
+    this.#setLog(this.#tracker.revertAll(this.#log));
     this.#renderEditor();
   }
 
   /** 편집한 요소가 문서에서 분리되면 해당 항목을 stale로 표시한다(E-6·HMR). */
   #checkDetached(): void {
     if (this.#disposed) return;
-    const next = markStale(this.#log, this.#applied.pruneDetached());
+    const next = this.#tracker.pruneDetached(this.#log);
     if (next === this.#log) return;
     this.#setLog(next);
     this.#panel.setStatus('info', '편집한 요소가 페이지에서 교체되었습니다(새로고침·HMR). 변경 내역은 유지되지만 페이지 표시가 사라졌을 수 있습니다.');

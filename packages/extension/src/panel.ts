@@ -170,6 +170,7 @@ export function renderChanges(container: HTMLElement, log: readonly LocalChange[
       : '소스 위치 없음 — 전송 제외';
     body.append(line(c.source ? 'path' : 'path warn', where));
     body.append(line('diff', `${c.property}: ${originalValue(c)} → ${c.after}`));
+    if (originalValue(c) === c.after.trim()) body.append(line('muted', '같은 소스의 다른 요소는 원래 값과 다르게 편집되어 있음'));
     body.append(line('muted', c.selectorHint));
     if (c.stale) body.append(line('warn', '페이지 표시가 사라졌을 수 있음(새로고침·HMR·재활성화로 요소가 바뀜)'));
     item.append(body, button('되돌리기', () => handlers.onRevert(c.id)));
