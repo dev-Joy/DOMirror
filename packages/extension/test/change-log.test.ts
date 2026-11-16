@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   changeKey,
+  diffLog,
+  markStale,
+  mergeLoaded,
   recordChange,
   removeChange,
   removeSent,
@@ -32,6 +35,44 @@ describe('changeKey', () => {
     expect(changeKey(change())).not.toBe(changeKey(change({ property: 'padding-left' })));
     expect(changeKey(change())).not.toBe(changeKey(change({ source: { ...SOURCE, line: 13 } })));
     expect(changeKey(change({ source: null }))).not.toBe(changeKey(change()));
+  });
+
+  it('요소 자신의 위치면 선택자 요약(class)과 무관하게 위치·속성 1개 키 (E-2·R-1)', () => {
+    expect(changeKey(change({ selectorHint: 'li.item' }))).toBe(changeKey(change({ selectorHint: 'li.item.active' })));
+  });
+
+  it('조상 위치·위치 없음이면 선택자 요약으로 서로 다른 요소를 구분한다', () => {
+    const inherited = { ...SOURCE, inherited: true };
+    expect(changeKey(change({ source: inherited, selectorHint: 'span' }))).not.toBe(
+      changeKey(change({ source: inherited, selectorHint: 'em' })),
+    );
+    expect(changeKey(change({ source: null, selectorHint: 'span' }))).not.toBe(changeKey(change({ source: null, selectorHint: 'em' })));
+    // 같은 위치라도 요소 자신의 위치(조상)와 그 위치를 물려받은 자손은 다른 요소다.
+    expect(changeKey(change({ source: inherited }))).not.toBe(changeKey(change()));
+  });
+});
+
+describe('R-1 회귀: 같은 소스 위치의 class 차이', () => {
+  const VUE = { file: 'src/App.vue', line: 5, column: 7, inherited: false };
+
+  it('li.item=10px, li.item.active=20px 편집은 같은 파일:라인·속성 1건으로 합친다', () => {
+    let log = recordChange([], change({ source: VUE, selectorHint: 'li.item', before: { authored: null, computed: '0px' }, after: '10px' }));
+    log = recordChange(
+      log,
+      change({ id: 'id-2', source: VUE, selectorHint: 'li.item.active', before: { authored: null, computed: '0px' }, after: '20px' }),
+    );
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ id: 'id-1', before: { authored: null, computed: '0px' }, after: '20px' });
+  });
+
+  it('편집 20 → 앱이 class 추가 → 편집 30이면 [10→30] 1건, 되돌리면 내역 0건', () => {
+    let log = recordChange([], change({ source: VUE, selectorHint: 'li.item', before: { authored: '10px', computed: '10px' }, after: '20px' }));
+    log = recordChange(
+      log,
+      change({ id: 'id-2', source: VUE, selectorHint: 'li.item.active', before: { authored: '20px', computed: '20px' }, after: '30px' }),
+    );
+    expect(log.map((c) => `${c.before.authored}→${c.after}`)).toEqual(['10px→30px']);
+    expect(removeChange(log, log[0].id)).toEqual([]);
   });
 });
 
@@ -104,22 +145,77 @@ describe('sendable', () => {
 });
 
 describe('removeSent', () => {
+  const rebase = { newId: () => 'id-new', now: '2026-11-16T00:01:00.000Z' };
+
   it('전송 성공분만 제거하고 위치 없는 항목은 남긴다 (E-4)', () => {
     const log = [change(), change({ id: 'id-2', source: null }), change({ id: 'id-3', property: 'color' })];
     const sent = sendable(log);
-    expect(removeSent(log, sent).map((c) => c.id)).toEqual(['id-2']);
+    expect(removeSent(log, sent, rebase).map((c) => c.id)).toEqual(['id-2']);
   });
 
-  it('전송 중 다시 편집되어 after가 달라진 항목은 남긴다', () => {
-    const log = [change()];
+  it('R-2 회귀: 전송 중 재편집된 항목은 보낸 값을 before로 하는 새 항목으로 남긴다(순차 경로와 같음)', () => {
+    // 10→20 전송 시작 → 응답 전 30으로 재편집 → 전송 성공
+    const log = [change({ before: { authored: '10px', computed: '10px' }, after: '20px' })];
     const sent = sendable(log);
-    const edited = recordChange(log, change({ id: 'id-9', after: '40px' }));
-    expect(removeSent(edited, sent)).toEqual([change({ after: '40px' })]);
+    const edited = recordChange(log, change({ id: 'id-9', before: { authored: '20px', computed: '20px' }, after: '30px' }));
+    const concurrent = removeSent(edited, sent, rebase);
+    expect(concurrent).toEqual([
+      change({ id: 'id-new', before: { authored: '20px', computed: '20px' }, after: '30px', createdAt: '2026-11-16T00:01:00.000Z' }),
+    ]);
+    // 순차 경로: 전송 완료 후 재편집하면 before = 보낸 값 20
+    const sequential = recordChange(removeSent(log, sent, rebase), change({ id: 'id-new', before: { authored: '20px', computed: '20px' }, after: '30px', createdAt: '2026-11-16T00:01:00.000Z' }));
+    expect(concurrent).toEqual(sequential);
+    // 되돌리면 내역 0건(페이지는 applier.rebase로 20 복귀 — applier 테스트)
+    expect(removeChange(concurrent, 'id-new')).toEqual([]);
   });
 
   it('전송 실패 시(호출하지 않으면) 목록은 그대로다', () => {
     const log = [change()];
-    expect(removeSent(log, [])).toEqual(log);
+    expect(removeSent(log, [], rebase)).toEqual(log);
+  });
+});
+
+describe('markStale (E-6·R-4)', () => {
+  it('분리된 요소의 key 항목만 stale로 바꾸고, 바뀐 것이 없으면 같은 배열을 돌려준다', () => {
+    const log = [change(), change({ id: 'id-2', property: 'color' })];
+    const next = markStale(log, new Set([changeKey(log[0])]));
+    expect(next.map((c) => c.stale)).toEqual([true, false]);
+    expect(next[1]).toBe(log[1]);
+    expect(markStale(log, new Set())).toBe(log);
+    expect(markStale(next, new Set([changeKey(log[0])]))).toBe(next);
+  });
+});
+
+describe('mergeLoaded', () => {
+  it('복원 항목 앞, 불러오기 전 편집 뒤. 같은 key는 복원 항목의 id·before에 현재 after를 얹는다', () => {
+    const restored = [change({ id: 'old', stale: true, before: { authored: '8px', computed: '8px' }, after: '12px' }), change({ id: 'other', property: 'color', stale: true })];
+    const current = [change({ id: 'cur', before: { authored: null, computed: '8px' }, after: '20px' }), change({ id: 'new', property: 'width' })];
+    const { log, dirty, removed } = mergeLoaded(restored, current);
+    expect(log.map((c) => [c.id, c.after, c.stale])).toEqual([
+      ['old', '20px', false],
+      ['other', '12px', true],
+      ['new', '12px', false],
+    ]);
+    expect(log[0].before).toEqual({ authored: '8px', computed: '8px' });
+    expect([...dirty].sort()).toEqual(['new', 'old']);
+    expect([...removed]).toEqual(['cur']);
+  });
+
+  it('같은 id는 현재 항목이 우선하고 지우지 않는다', () => {
+    const { log, removed } = mergeLoaded([change({ stale: true })], [change({ after: '30px' })]);
+    expect(log).toEqual([change({ after: '30px' })]);
+    expect(removed.size).toBe(0);
+  });
+});
+
+describe('diffLog', () => {
+  it('새로 생기거나 바뀐 id와 사라진 id를 구한다', () => {
+    const a = change();
+    const b = change({ id: 'id-2' });
+    const { dirty, removed } = diffLog([a, b], [a, { ...b, after: '1px' }, change({ id: 'id-3' })]);
+    expect([...dirty]).toEqual(['id-2', 'id-3']);
+    expect([...removed]).toEqual([]);
+    expect([...diffLog([a, b], [b]).removed]).toEqual(['id-1']);
   });
 });
 

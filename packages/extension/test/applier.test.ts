@@ -6,6 +6,7 @@ class FakeElement implements StyledElement {
   readonly decls = new Map<string, { value: string; priority: string }>();
   readonly style: InlineStyle;
   hasStyle: boolean;
+  isConnected = true;
 
   constructor(initial: Record<string, string> = {}) {
     for (const [k, v] of Object.entries(initial)) this.decls.set(k, { value: v, priority: '' });
@@ -85,6 +86,50 @@ describe('AppliedStyles', () => {
     applied.restoreAll();
     expect(el.decls.size).toBe(0);
     expect(el.hasAttribute('style')).toBe(false);
+  });
+
+  it('R-1 회귀: 같은 소스 key의 1건 되돌리기가 class가 다른 요소까지 모두 원복한다', () => {
+    const item = new FakeElement();
+    const active = new FakeElement();
+    const applied = new AppliedStyles();
+    const key = 'src/App.vue:5:7|padding-top';
+    applied.apply(key, item, 'padding-top', '10px');
+    applied.apply(key, active, 'padding-top', '20px');
+    applied.revert(key);
+    expect(item.decls.size).toBe(0);
+    expect(active.decls.size).toBe(0);
+  });
+
+  it('R-2 회귀: 전송 중 재편집 후 rebase하면 되돌리기가 보낸 값(20)으로 복귀한다', () => {
+    const el = new FakeElement();
+    const applied = new AppliedStyles();
+    applied.apply('k', el, 'padding-top', '20px'); // 10(규칙)→20 편집
+    const snapshot = applied.snapshot('k'); // 전송 시작
+    applied.apply('k', el, 'padding-top', '30px'); // 응답 전 재편집
+    applied.rebase('k', snapshot); // 전송 성공
+    applied.revert('k');
+    expect(el.decls.get('padding-top')).toEqual({ value: '20px', priority: 'important' });
+    // 끄면 처음 상태로
+    applied.restoreAll();
+    expect(el.decls.size).toBe(0);
+  });
+
+  it('R-4 회귀: 분리된 요소의 key를 돌려주고 원복 대상에서 뺀다. 다시 감지하지 않는다', () => {
+    const kept = new FakeElement();
+    const replaced = new FakeElement();
+    const applied = new AppliedStyles();
+    applied.apply('k1', kept, 'padding-top', '10px');
+    applied.apply('k2', replaced, 'color', 'red');
+    expect([...applied.pruneDetached()]).toEqual([]);
+    replaced.isConnected = false; // HMR로 교체
+    expect([...applied.pruneDetached()]).toEqual(['k2']);
+    expect([...applied.pruneDetached()]).toEqual([]);
+    // 교체된 새 요소를 다시 편집하면 그 요소만 추적한다.
+    const fresh = new FakeElement();
+    applied.apply('k2', fresh, 'color', 'blue');
+    applied.revert('k2');
+    expect(fresh.decls.size).toBe(0);
+    expect(replaced.decls.get('color')?.value).toBe('red');
   });
 
   it('전송 후 새 항목은 그 시점 값을 기준으로 되돌린다', () => {

@@ -11,6 +11,8 @@ export interface InlineStyle {
 
 export interface StyledElement {
   readonly style: InlineStyle;
+  /** 문서에 붙어 있는지. 새로고침·HMR로 교체되면 false(E-6). */
+  readonly isConnected: boolean;
   hasAttribute(name: string): boolean;
   removeAttribute(name: string): void;
 }
@@ -82,6 +84,40 @@ export class AppliedStyles {
     for (const [el, prev] of record.prevs) {
       restoreStyle(el, record.property, prev, { removeEmptyStyleAttribute: this.#hadStyleAttribute.get(el) === false });
     }
+  }
+
+  /** 항목에 속한 요소별 현재 인라인 값(전송 시점 스냅숏). */
+  snapshot(key: string): Map<StyledElement, PrevInline> {
+    const out = new Map<StyledElement, PrevInline>();
+    const record = this.#byKey.get(key);
+    if (!record) return out;
+    for (const el of record.prevs.keys()) {
+      out.set(el, { value: el.style.getPropertyValue(record.property), priority: el.style.getPropertyPriority(record.property) });
+    }
+    return out;
+  }
+
+  /** 전송 중 재편집된 항목: 원복 기준을 보낸 시점 값으로 바꾼다(전송 후 재편집과 같은 결과). */
+  rebase(key: string, snapshot: ReadonlyMap<StyledElement, PrevInline>): void {
+    const record = this.#byKey.get(key);
+    if (!record) return;
+    for (const [el, prev] of snapshot) if (record.prevs.has(el)) record.prevs.set(el, prev);
+  }
+
+  /**
+   * 문서에서 분리된 요소를 항목 단위 원복 대상에서 빼고, 요소를 잃은 key를 돌려준다(E-6·HMR).
+   * 끌 때 원복(restoreAll)용 최초 값은 다시 붙는 경우를 위해 남긴다.
+   */
+  pruneDetached(): Set<string> {
+    const keys = new Set<string>();
+    for (const [key, record] of this.#byKey) {
+      for (const el of record.prevs.keys()) {
+        if (el.isConnected) continue;
+        record.prevs.delete(el);
+        keys.add(key);
+      }
+    }
+    return keys;
   }
 
   /** 전송된 항목: 페이지 표시는 유지하고 항목 단위 원복 대상에서만 뺀다. */

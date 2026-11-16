@@ -9,9 +9,14 @@ export interface LocalChange extends Omit<StyleChangeInput, 'source'> {
   stale: boolean;
 }
 
-/** 같은 요소·같은 속성 판정 키: 소스 위치 + 선택자 요약 + 속성. */
+/**
+ * 같은 요소·같은 속성 판정 키.
+ * - 요소 자신의 소스 위치(`inherited === false`): 위치 + 속성. class 변화·반복 렌더링(E-2)과 무관하게 위치당 1건.
+ * - 조상 위치·위치 없음: 서로 다른 요소가 합쳐지지 않도록 선택자 요약을 함께 쓴다.
+ */
 export function changeKey(c: Pick<LocalChange, 'source' | 'selectorHint' | 'property'>): string {
-  const where = c.source ? formatSourceLocation(c.source) : '(위치 없음)';
+  if (c.source && !c.source.inherited) return `${formatSourceLocation(c.source)}|${c.property}`;
+  const where = c.source ? `${formatSourceLocation(c.source)} (조상)` : '(위치 없음)';
   return `${where}|${c.selectorHint}|${c.property}`;
 }
 
@@ -51,13 +56,70 @@ export function sendable(log: readonly LocalChange[]): StyleChangeInput[] {
   return out;
 }
 
+export interface RebaseOptions {
+  /** 남긴 항목의 새 id(서버의 보낸 항목과 구분). */
+  newId(): string;
+  /** 남긴 항목의 새 createdAt. */
+  now: string;
+}
+
 /**
  * 전송 성공분을 목록에서 뺀다(서버가 보관). 전송 중에 다시 편집되어 after가 달라진 항목은
- * 아직 보내지 않은 값이므로 남긴다.
+ * 아직 보내지 않은 값이므로 남기되, 전송 후 재편집한 경우와 같도록 보낸 값을 before로 하는 새 항목으로 바꾼다.
  */
-export function removeSent(log: readonly LocalChange[], sent: readonly StyleChangeInput[]): LocalChange[] {
+export function removeSent(log: readonly LocalChange[], sent: readonly StyleChangeInput[], rebase: RebaseOptions): LocalChange[] {
   const sentAfter = new Map(sent.map((c) => [c.id, c.after]));
-  return log.filter((c) => sentAfter.get(c.id) !== c.after);
+  const out: LocalChange[] = [];
+  for (const c of log) {
+    const after = sentAfter.get(c.id);
+    if (after === undefined) out.push(c);
+    else if (after !== c.after) out.push({ ...c, id: rebase.newId(), before: { authored: after, computed: after }, createdAt: rebase.now });
+  }
+  return out;
+}
+
+/** 페이지에서 분리된 요소의 항목(key)을 stale로 표시한다(E-6·HMR). 바뀐 것이 없으면 입력 배열을 그대로 돌려준다. */
+export function markStale(log: LocalChange[], keys: ReadonlySet<string>): LocalChange[] {
+  if (keys.size === 0 || !log.some((c) => !c.stale && keys.has(changeKey(c)))) return log;
+  return log.map((c) => (!c.stale && keys.has(changeKey(c)) ? { ...c, stale: true } : c));
+}
+
+/**
+ * 불러온(복원) 항목과 불러오기 전에 이미 편집한 항목을 합친다.
+ * 같은 id는 현재 항목이 우선하고, 같은 key면 복원 항목의 id·before·createdAt(최초 이전값, FR-7)에 현재 after를 얹는다.
+ * `dirty`는 저장할 id, `removed`는 저장소에서 지울 id(복원 항목에 흡수된 현재 항목의 id)다.
+ */
+export function mergeLoaded(
+  restored: readonly LocalChange[],
+  current: readonly LocalChange[],
+): { log: LocalChange[]; dirty: Set<string>; removed: Set<string> } {
+  const currentIds = new Set(current.map((c) => c.id));
+  const log = restored.filter((r) => !currentIds.has(r.id));
+  const dirty = new Set<string>();
+  const removed = new Set<string>();
+  for (const c of current) {
+    const key = changeKey(c);
+    const index = log.findIndex((r) => changeKey(r) === key);
+    if (index === -1) {
+      log.push(c);
+      dirty.add(c.id);
+      continue;
+    }
+    const r = log[index];
+    log[index] = { ...c, id: r.id, before: r.before, createdAt: r.createdAt, stale: false };
+    dirty.add(r.id);
+    removed.add(c.id);
+  }
+  return { log, dirty, removed };
+}
+
+/** 이전·다음 목록 차이: 새로 생기거나 바뀐(객체가 다른) id와 사라진 id. */
+export function diffLog(prev: readonly LocalChange[], next: readonly LocalChange[]): { dirty: Set<string>; removed: Set<string> } {
+  const prevById = new Map(prev.map((c) => [c.id, c]));
+  const nextIds = new Set(next.map((c) => c.id));
+  const dirty = new Set(next.filter((c) => prevById.get(c.id) !== c).map((c) => c.id));
+  const removed = new Set(prev.filter((c) => !nextIds.has(c.id)).map((c) => c.id));
+  return { dirty, removed };
 }
 
 /** 저장소에서 읽은 항목을 복원 상태로 표시한다(E-6). 형태가 맞지 않는 값은 버린다. */

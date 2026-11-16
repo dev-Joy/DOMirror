@@ -1,6 +1,18 @@
 import { DEFAULT_PORT, formatSourceLocation, type ContentToWorkerMessage, type SendResult, type StyleChangeInput } from '@domirror/shared';
-import { AppliedStyles } from './applier.js';
-import { changeKey, recordChange, removeChange, removeSent, restoreStale, sendable, type LocalChange } from './change-log.js';
+import { AppliedStyles, type PrevInline, type StyledElement } from './applier.js';
+import {
+  changeKey,
+  diffLog,
+  markStale,
+  mergeLoaded,
+  recordChange,
+  removeChange,
+  removeSent,
+  restoreStale,
+  sendable,
+  type LocalChange,
+} from './change-log.js';
+import { ChangeSync, type LogDiff } from './change-sync.js';
 import { readBefore } from './css-read.js';
 import {
   createSelectionHighlight,
@@ -231,6 +243,11 @@ class EditSession {
   readonly #highlight: SelectionHighlight;
   readonly #applied = new AppliedStyles();
   readonly #origin = location.origin;
+  readonly #sync: ChangeSync;
+  /** 전송 중인 항목 id별 요소 인라인 값 스냅숏(전송 중 재편집 시 원복 기준, R-2). */
+  #inflight = new Map<string, Map<StyledElement, PrevInline>>();
+  /** 편집한 요소가 HMR 등으로 교체되는지 감시한다(E-6). 패널 Shadow 내부는 관찰되지 않는다. */
+  readonly #observer = new MutationObserver(() => this.#checkDetached());
   #selected: Element | null = null;
   #log: LocalChange[] = [];
   #disposed = false;
@@ -238,14 +255,19 @@ class EditSession {
   constructor(panel: Panel) {
     this.#panel = panel;
     this.#highlight = createSelectionHighlight(panel.shadow);
+    const origin = this.#origin;
+    this.#sync = new ChangeSync(
+      { load: () => loadEntries<unknown>(origin), save: (entries) => saveEntries(origin, entries) },
+      () => this.#log,
+    );
+    this.#observer.observe(document.documentElement, { childList: true, subtree: true });
     this.#renderChanges();
-    loadEntries<unknown>(this.#origin)
+    loadEntries<unknown>(origin)
       .then((entries) => {
         if (this.#disposed) return;
-        // 불러오기 전에 이미 편집한 항목이 우선한다.
-        const current = new Set(this.#log.map(changeKey));
-        this.#log = [...restoreStale(entries).filter((c) => !current.has(changeKey(c))), ...this.#log];
-        this.#renderChanges();
+        // 불러오기 전에 이미 편집한 항목이 우선하고, 합친 결과를 다시 저장한다.
+        const { log, dirty, removed } = mergeLoaded(restoreStale(entries), this.#log);
+        this.#setLog(log, { dirty, removed });
       })
       .catch((error: unknown) => this.#panel.setStatus('error', `변경 내역을 불러오지 못했습니다: ${errorMessage(error)}`));
   }
@@ -268,19 +290,28 @@ class EditSession {
 
   collect(): { changes: StyleChangeInput[]; excluded: number } {
     const changes = sendable(this.#log);
+    this.#inflight = new Map(changes.map((c) => [c.id, this.#applied.snapshot(changeKey(c))]));
     return { changes, excluded: this.#log.length - changes.length };
   }
 
   onSent(sent: StyleChangeInput[]): void {
-    const next = removeSent(this.#log, sent);
-    const kept = new Set(next.map((c) => c.id));
-    // 전송된 항목의 페이지 표시는 유지하되, 이후 되돌리기 대상에서는 뺀다.
-    for (const c of this.#log) if (!kept.has(c.id)) this.#applied.forget(changeKey(c));
-    this.#setLog(next);
+    const sentAfter = new Map(sent.map((c) => [c.id, c.after]));
+    for (const c of this.#log) {
+      const after = sentAfter.get(c.id);
+      if (after === undefined) continue;
+      const key = changeKey(c);
+      // 그대로 보낸 항목은 페이지 표시를 유지하되 되돌리기 대상에서 뺀다.
+      // 전송 중 재편집된 항목은 보낸 시점 값을 원복 기준으로 삼는다(전송 후 재편집과 같은 결과).
+      if (after === c.after) this.#applied.forget(key);
+      else this.#applied.rebase(key, this.#inflight.get(c.id) ?? new Map());
+    }
+    this.#inflight = new Map();
+    this.#setLog(removeSent(this.#log, sent, { newId, now: new Date().toISOString() }));
   }
 
   dispose(): void {
     this.#disposed = true;
+    this.#observer.disconnect();
     this.#highlight.dispose();
     // 페이지 표시는 원복하고 내역은 저장소에 남긴다(NFR-3·E-6).
     this.#applied.restoreAll();
@@ -339,10 +370,19 @@ class EditSession {
     this.#renderEditor();
   }
 
-  #setLog(next: LocalChange[]): void {
+  /** 편집한 요소가 문서에서 분리되면 해당 항목을 stale로 표시한다(E-6·HMR). */
+  #checkDetached(): void {
+    if (this.#disposed) return;
+    const next = markStale(this.#log, this.#applied.pruneDetached());
+    if (next === this.#log) return;
+    this.#setLog(next);
+    this.#panel.setStatus('info', '편집한 요소가 페이지에서 교체되었습니다(새로고침·HMR). 변경 내역은 유지되지만 페이지 표시가 사라졌을 수 있습니다.');
+  }
+
+  #setLog(next: LocalChange[], diff: LogDiff = diffLog(this.#log, next)): void {
     this.#log = next;
     this.#renderChanges();
-    saveEntries(this.#origin, next).catch((error: unknown) =>
+    this.#sync.save(diff).catch((error: unknown) =>
       this.#panel.setStatus('error', `변경 내역을 저장하지 못했습니다: ${errorMessage(error)}`),
     );
   }
