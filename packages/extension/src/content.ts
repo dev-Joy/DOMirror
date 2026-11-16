@@ -1,5 +1,8 @@
-import { DEFAULT_PORT, type ContentToWorkerMessage, type SendResult, type StyleChangeInput } from '@domirror/shared';
+import { DEFAULT_PORT, formatSourceLocation, type ContentToWorkerMessage, type SendResult, type StyleChangeInput } from '@domirror/shared';
+import { LOCATION_CSS, renderLocation } from './panel.js';
+import { createPicker, PICKER_CSS, type Picker } from './picker.js';
 import { isValidPort } from './relay.js';
+import { countSameSource, locate, selectorHint } from './source-locator.js';
 import { loadPort, savePort } from './storage.js';
 
 // 진입점: 아이콘 클릭으로 주입되면 즉시 활성화되고, 이후 'domirror:toggle' 메시지로 켜고 끈다.
@@ -44,6 +47,9 @@ type StatusKind = 'info' | 'ok' | 'error';
 
 interface Panel {
   host: HTMLElement;
+  shadow: ShadowRoot;
+  /** 위치 표시 자리(배치 E). */
+  locationSlot: HTMLElement;
   dispose(): void;
 }
 
@@ -63,7 +69,7 @@ function createPanel(): Panel {
   const host = document.createElement(HOST_TAG);
   const shadow = host.attachShadow({ mode: 'open' });
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(PANEL_CSS);
+  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + PICKER_CSS);
   shadow.adoptedStyleSheets = [sheet];
 
   const panel = document.createElement('div');
@@ -99,6 +105,9 @@ function createPanel(): Panel {
   const status = document.createElement('p');
   status.className = 'status';
   status.setAttribute('role', 'status');
+
+  const locationSlot = slots[0];
+  renderLocation(locationSlot, { kind: 'idle' });
 
   panel.append(title, ...slots, sendRow, status);
   shadow.append(panel);
@@ -164,6 +173,8 @@ function createPanel(): Panel {
 
   return {
     host,
+    shadow,
+    locationSlot,
     dispose() {
       disposed = true;
       portInput.removeEventListener('change', onPortChange);
@@ -174,16 +185,33 @@ function createPanel(): Panel {
 }
 
 let panel: Panel | null = null;
+let picker: Picker | null = null;
+
+function onPick(el: Element): void {
+  if (!panel) return;
+  const located = locate(el);
+  const sameSource = located ? countSameSource(formatSourceLocation(located.location)) : 0;
+  renderLocation(panel.locationSlot, { kind: 'selected', hint: selectorHint(el), located, sameSource });
+}
 
 function activate(): void {
   if (panel) return;
   // 이전 인스턴스가 정리되지 못하고 남긴 호스트가 있으면 제거한다.
   for (const stale of document.querySelectorAll(HOST_TAG)) stale.remove();
-  panel = createPanel();
-  document.documentElement.append(panel.host);
+  const current = createPanel();
+  panel = current;
+  document.documentElement.append(current.host);
+  picker = createPicker(onPick, {
+    overlayRoot: current.shadow,
+    isOwn: (target) => target instanceof Node && current.host.contains(target),
+    onBlocked: (reason) => renderLocation(current.locationSlot, { kind: 'blocked', reason }),
+  });
+  picker.start();
 }
 
 function deactivate(): void {
+  picker?.stop();
+  picker = null;
   panel?.dispose();
   panel = null;
 }
