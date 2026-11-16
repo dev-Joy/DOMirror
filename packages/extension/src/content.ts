@@ -11,6 +11,7 @@ import {
   renderLocation,
   type SelectionHighlight,
 } from './panel.js';
+import { createMeasureOverlay, MEASURE_CSS, type MeasureOverlay } from './overlay.js';
 import { createPicker, PICKER_CSS, type BlockedReason, type Picker } from './picker.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
@@ -67,6 +68,8 @@ interface Panel {
   locationSlot: HTMLElement;
   editorSlot: HTMLElement;
   changesSlot: HTMLElement;
+  /** 간격 보기 토글·수치 자리(배치 G). */
+  measureSlot: HTMLElement;
   setStatus(kind: StatusKind, text: string): void;
   dispose(): void;
 }
@@ -86,7 +89,7 @@ function createPanel(handlers: SendHandlers): Panel {
   const host = document.createElement(HOST_TAG);
   const shadow = host.attachShadow({ mode: 'open' });
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + EDITOR_CSS + PICKER_CSS);
+  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + EDITOR_CSS + PICKER_CSS + MEASURE_CSS);
   shadow.adoptedStyleSheets = [sheet];
 
   const panel = document.createElement('div');
@@ -123,7 +126,7 @@ function createPanel(handlers: SendHandlers): Panel {
   status.className = 'status';
   status.setAttribute('role', 'status');
 
-  const [locationSlot, editorSlot, changesSlot] = slots;
+  const [locationSlot, editorSlot, changesSlot, measureSlot] = slots;
   renderLocation(locationSlot, { kind: 'idle' });
 
   panel.append(title, ...slots, sendRow, status);
@@ -201,6 +204,7 @@ function createPanel(handlers: SendHandlers): Panel {
     locationSlot,
     editorSlot,
     changesSlot,
+    measureSlot,
     setStatus,
     dispose() {
       disposed = true;
@@ -364,6 +368,7 @@ class EditSession {
 let panel: Panel | null = null;
 let picker: Picker | null = null;
 let session: EditSession | null = null;
+let measure: MeasureOverlay | null = null;
 
 function activate(): void {
   if (panel) return;
@@ -378,10 +383,14 @@ function activate(): void {
   panel = currentPanel;
   session = current;
   document.documentElement.append(currentPanel.host);
+  const isOwn = (target: EventTarget | null): boolean => target instanceof Node && currentPanel.host.contains(target);
+  const currentMeasure = createMeasureOverlay({ overlayRoot: currentPanel.shadow, controls: currentPanel.measureSlot, isOwn });
+  measure = currentMeasure;
   picker = createPicker((el) => current.select(el), {
     overlayRoot: currentPanel.shadow,
-    isOwn: (target) => target instanceof Node && currentPanel.host.contains(target),
+    isOwn,
     onBlocked: (reason) => current.blocked(reason),
+    onAltPick: (el) => currentMeasure.handleAltPick(el),
   });
   picker.start();
 }
@@ -389,6 +398,8 @@ function activate(): void {
 function deactivate(): void {
   picker?.stop();
   picker = null;
+  measure?.dispose();
+  measure = null;
   session?.dispose();
   session = null;
   panel?.dispose();

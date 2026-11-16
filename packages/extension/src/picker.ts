@@ -10,6 +10,8 @@ export interface PickerOptions {
   isOwn(target: EventTarget | null): boolean;
   /** Shadow DOM·iframe 내부 요소를 클릭했을 때 호출된다(E-7). */
   onBlocked(reason: BlockedReason): void;
+  /** Alt+클릭을 일반 선택 대신 처리하려면 true를 돌려준다(간격 보기 기준 요소 고정, FR-11). */
+  onAltPick?(el: Element): boolean;
 }
 
 export interface Picker {
@@ -49,7 +51,7 @@ function blockedReason(event: Event, target: Element): BlockedReason | null {
 }
 
 export function createPicker(onPick: (el: Element) => void, options: PickerOptions): Picker {
-  const { overlayRoot, isOwn, onBlocked } = options;
+  const { overlayRoot, isOwn, onBlocked, onAltPick } = options;
   let outline: HTMLDivElement | null = null;
   let hovered: Element | null = null;
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
@@ -97,6 +99,7 @@ export function createPicker(onPick: (el: Element) => void, options: PickerOptio
     if (isOwn(event.target)) return;
     suppress(event);
     if (event.button !== 0 || !(event.target instanceof Element)) return;
+    if (event.altKey && onAltPick?.(event.target)) return;
     const reason = blockedReason(event, event.target);
     if (reason) onBlocked(reason);
     else onPick(event.target);
