@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.6] - 2026-11-16
+
+### Changed
+
+- docs: INT-001 배치 H — README 사용 문서와 예제 favicon 보정
+
 ## [0.1.5] - 2026-11-16
 
 ### Added
