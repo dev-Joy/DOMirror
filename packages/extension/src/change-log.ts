@@ -71,7 +71,8 @@ export interface RebaseOptions {
  * 보낸 항목 s마다 대응 항목 c = 같은 id 항목, 없으면 전송 중 새로 생긴 같은 key 항목:
  * - 페이지가 보낸 상태이고 c의 after도 보낸 값이면: c를 뺀다.
  *   (페이지와 무관하게 c.after가 보낸 값과 다르면 아직 보내지 않은 값이므로 남긴다, E-4.)
- * - c가 없으면(응답 전에 되돌림): "보낸 값 → 원래 값" 보정 항목을 새 id로 추가한다(`compensated` 건수).
+ * - c가 없으면(전송 중 되돌리기·전체 되돌리기·원래 값 재편집으로 로그에서 지워짐): 페이지 추적 여부(isActive)와 무관하게
+ *   "보낸 값 → 원래 값" 보정 항목을 새 id로 추가한다(`compensated` 건수). 복원·분리된 stale 항목도 같다(D-A).
  * - c가 보낸 항목 자신이면: 새 id·createdAt, before = 보낸 값(R-2).
  * - c가 전송 중 새로 생긴 항목이면: id·createdAt은 유지하고 before만 보낸 값으로 바꾼다.
  */
@@ -90,13 +91,13 @@ export function settleSent(
     if (index === -1) index = out.findIndex((c) => !sentIds.has(c.id) && changeKey(c) === key);
     const c = index === -1 ? undefined : out[index];
     const sentBefore = { authored: s.after, computed: s.after };
-    if (!isActive(key) && !(c && c.after.trim() !== s.after.trim())) {
-      if (index !== -1) out.splice(index, 1);
-      continue;
-    }
     if (!c) {
       out.push({ ...s, id: rebase.newId(), before: sentBefore, after: originalValue(s), createdAt: rebase.now, stale: false });
       compensated++;
+      continue;
+    }
+    if (!isActive(key) && c.after.trim() === s.after.trim()) {
+      out.splice(index, 1);
       continue;
     }
     out[index] =

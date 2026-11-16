@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { originalValue, type LocalChange } from '../src/change-log.js';
+import { originalValue, restoreStale, type LocalChange } from '../src/change-log.js';
 import { EditTracker } from '../src/edit-tracker.js';
 import { FakeElement } from './fake-element.js';
 
@@ -206,4 +206,58 @@ describe('EditTracker: 결합·E-4', () => {
     expect(result.log[0].id).toBe('id-new');
     expect(result.compensated).toBe(0);
   });
+});
+
+describe('EditTracker: D-A 페이지 추적이 없는(stale) 항목을 보낸 뒤 응답 전 조작', () => {
+  type StaleKind = 'restored' | 'detached';
+
+  /** 0→10 stale 항목 준비 → 전송 시작 → (전송 중 조작) → 전송 성공. el2는 지금 화면에 있는(원래 값 0을 보이는) 요소. */
+  function stalePath(kind: StaleKind, during: DuringSend) {
+    const tracker = new EditTracker();
+    const el2 = new FakeElement();
+    let log: LocalChange[];
+    if (kind === 'restored') {
+      // 새로고침·재활성화: 저장소에서 복원된 항목(applier 추적 없음)
+      log = restoreStale([ch(new FakeElement(), '0px', '10px')]);
+    } else {
+      // HMR: 편집한 요소가 분리됨
+      const el = new FakeElement();
+      log = tracker.edit([], el, ch(el, '0px', '10px'));
+      el.isConnected = false;
+      log = tracker.pruneDetached(log);
+    }
+    expect(log.map((c) => c.stale)).toEqual([true]);
+    const sent = tracker.beginSend(log);
+    log = during(tracker, log, el2);
+    const result = tracker.endSend(log, sent, rebase);
+    return { tracker, el2, ...result };
+  }
+
+  const ops: [string, DuringSend][] = [
+    ['되돌리기', (tracker, log) => tracker.revert(log, log[0].id)],
+    ['전체 되돌리기', (tracker, log) => tracker.revertAll(log)],
+    ['원래 값 재편집', (tracker, log, el) => tracker.edit(log, el, ch(el, '0px', '0px'))],
+  ];
+
+  for (const kind of ['restored', 'detached'] as const) {
+    for (const [name, during] of ops) {
+      it(`${kind}: 응답 전 ${name} → "보낸 값 → 원래 값" 보정 1건`, () => {
+        const r = stalePath(kind, during);
+        expect(labels(r.log)).toEqual(['10px→0px']);
+        expect(r.log[0].id).toBe('id-new');
+        expect(r.compensated).toBe(1);
+        expect(visible(r.el2, '0px')).toBe('0px');
+      });
+    }
+
+    it(`${kind}: 그대로 보낸 stale 항목은 보정 없이 내역에서 빠진다`, () => {
+      expect(stalePath(kind, (_tracker, log) => log)).toMatchObject({ log: [], compensated: 0 });
+    });
+
+    it(`${kind}: 응답 전 되돌린 뒤 보낸 값으로 다시 편집하면 보정 없음`, () => {
+      const r = stalePath(kind, (tracker, log, el) => tracker.edit(tracker.revert(log, log[0].id), el, ch(el, '0px', '10px')));
+      expect(r.compensated).toBe(0);
+      expect(r.log.every((c) => c.after === '10px')).toBe(true);
+    });
+  }
 });

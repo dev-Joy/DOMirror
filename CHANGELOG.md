@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.9] - 2026-11-16
+
+### Fixed
+
+- fix: INT-001 정합성 판정 잔여 결함 D-A 수정, D-B·D-C 문서화
+
 ## [0.1.8] - 2026-11-16
 
 ### Fixed

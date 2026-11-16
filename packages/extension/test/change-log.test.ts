@@ -190,16 +190,18 @@ describe('settleSent', () => {
     expect(settleSent(log, [], () => true, rebase).log).toEqual(log);
   });
 
-  it('D-1: 로그에서 사라진 보낸 항목은 isActive면 "보낸 값 → 원래 값" 보정 항목, 아니면 아무것도 남지 않는다', () => {
+  it('D-1·D-A: 로그에서 사라진 보낸 항목은 isActive와 무관하게 "보낸 값 → 원래 값" 보정 항목을 남긴다', () => {
     const log = [change({ before: { authored: null, computed: '0px' }, after: '10px' })];
     const sent = sendable(log);
-    const active = settleSent([], sent, () => true, rebase);
-    expect(active.compensated).toBe(1);
-    expect(active.log).toEqual([
-      change({ id: 'id-new', before: { authored: '10px', computed: '10px' }, after: '0px', createdAt: '2026-11-16T00:01:00.000Z' }),
-    ]);
-    const inactive = settleSent([], sent, () => false, rebase);
-    expect(inactive).toEqual({ log: [], compensated: 0 });
+    const compensation = change({ id: 'id-new', before: { authored: '10px', computed: '10px' }, after: '0px', createdAt: '2026-11-16T00:01:00.000Z' });
+    expect(settleSent([], sent, () => true, rebase)).toEqual({ log: [compensation], compensated: 1 });
+    // 페이지 추적이 없는 stale 항목(복원·HMR 분리)을 보낸 뒤 되돌린 경우(D-A)
+    expect(settleSent([], sent, () => false, rebase)).toEqual({ log: [compensation], compensated: 1 });
+  });
+
+  it('D-A: 로그에 그대로 남은 stale 항목은 isActive=false면 보정 없이 빠진다', () => {
+    const log = [change({ stale: true })];
+    expect(settleSent(log, sendable(log), () => false, rebase)).toEqual({ log: [], compensated: 0 });
   });
 
   it('같은 key의 전송 중 신규 항목은 id·createdAt을 유지하고 before만 보낸 값으로 바뀐다', () => {
