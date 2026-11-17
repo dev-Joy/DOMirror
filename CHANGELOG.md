@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.29] - 2026-11-17
+
+### Added
+
+- README 옵션 표에 `designSystem`, 주입 대상에 `data-domirror-component`·`data-domirror-ds`와 사용처 측 조건 추가
+- 알려진 한계에 컴포넌트 정보 휴리스틱·패키지형 DS·전역 등록·alias·런타임 요소 한계, 체크리스트에 호버 라벨·패널 확인 항목 추가
+
 ## [0.1.28] - 2026-11-17
 
 ### Added

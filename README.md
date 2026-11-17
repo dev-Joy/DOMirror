@@ -75,6 +75,9 @@ export default defineConfig({
 | :--- | :--- | :--- |
 | `enabled` | `false` | `true`일 때만 주입합니다. 끄면 산출물에 `data-domirror`가 0건입니다. |
 | `injectors` | `[]` | 기본 주입기(React·Vue) 뒤에 추가할 주입기(`Injector` 인터페이스, `@domirror/plugin`에서 타입 제공). |
+| `designSystem` | `[]` | 디자인 시스템 컴포넌트 판별 패턴 목록. 정의 파일 경로 glob(`src/ds/**`) 또는 import specifier(`@acme/ui`)와 일치하면 `data-domirror-ds`를 넣습니다. |
+
+`enabled`가 켜져 있으면 `data-domirror`(소스 위치)와 함께 `data-domirror-component="<이름>|<정의 파일>"`·`data-domirror-ds`(디자인 시스템 여부)가 들어갑니다. `designSystem` 패턴과 일치하는 import를 쓰는 컴포넌트 태그에도 `data-domirror-component`가 붙지만, 그 컴포넌트가 props/attrs를 루트 요소로 전달할 때만 DOM에 남습니다.
 
 주입 대상은 Vite 루트 안의 파일뿐입니다. `node_modules`, 루트 밖 파일, 쿼리가 붙은 모듈 id는 건너뜁니다.
 
@@ -269,7 +272,8 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 
 ## 알려진 한계
 
-- **지원 범위**: Vite만 지원합니다(webpack·Next.js/Turbopack은 후속). React는 호스트 요소(`<div>` 등 소문자 태그), Vue 3는 SFC 템플릿의 네이티브 요소만 1차 지원합니다. 컴포넌트 태그·Fragment·`<template>`·`<slot>`에는 위치를 넣지 않습니다.
+- **지원 범위**: Vite만 지원합니다(webpack·Next.js/Turbopack은 후속). React는 호스트 요소(`<div>` 등 소문자 태그), Vue 3는 SFC 템플릿의 네이티브 요소만 1차 지원합니다. 컴포넌트 태그·Fragment·`<template>`·`<slot>`에는 위치를 넣지 않습니다(단, `designSystem` 패턴과 일치하는 import의 컴포넌트 태그에는 컴포넌트 정보 속성을 넣습니다).
+- **컴포넌트 정보 한계**: 컴포넌트 정보는 빌드 시 이름 휴리스틱으로 만듭니다. 이름은 요소를 감싼 가장 가까운 대문자 함수·클래스 이름이며, 없으면 파일 basename을 씁니다(익명 default export도 basename). 패키지형 디자인 시스템은 사용처 측 속성이 컴포넌트 루트까지 전달될 때만 판별되고, `...props`를 넘기지 않거나 Vue에서 `inheritAttrs: false`·다중 루트면 보이지 않습니다. 전역 등록·자동 import 컴포넌트는 SFC 안에 import 출처가 없어 판별하지 않습니다. `@/ds` 같은 alias는 문자열로만 비교하며 해석하지 않습니다. `createElement` 등 런타임 생성 요소에는 속성이 없어 조상 컴포넌트 정보가 보입니다.
 - **경고 조건**: 경고는 Vite가 프로덕션 모드로 판단할 때만 출력됩니다. `NODE_ENV=development vite build`처럼 빌드하면 경고가 나오지 않습니다.
 - **iframe**: 익스텐션은 최상위 문서에만 동작합니다. iframe 내부 요소는 선택할 수 없고, iframe 안 앱의 클릭 등 동작은 막지 못합니다. 익스텐션을 켜기 전에 iframe에 포커스가 있었다면 첫 클릭 안내가 표시되지 않습니다.
 - **Shadow DOM**: Shadow DOM 내부 요소는 선택할 수 없습니다. open Shadow DOM은 안내를 표시하지만, closed Shadow DOM은 감지하지 못해 호스트 요소가 선택됩니다.
@@ -293,6 +297,7 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 - [ ] macOS 실제 Option 키 + 클릭으로 간격 보기 기준 요소가 고정/해제된다.
 - [ ] 종단(AC-8): Claude Code에 서버 등록 → React·Vue 예제 각각에서 편집·전송 → 에이전트가 소스 수정 → 새로고침 후 같은 변경이 보인다.
 - [ ] 종단(자동 확인): chrome-devtools-mcp를 함께 등록한 상태에서 에이전트가 일치 항목만 반영 완료로 표시하고 불일치 항목을 보고한다.
+- [ ] 컴포넌트 라벨: `src/ds/` 컴포넌트 호버 시 초록 라벨(`이름 · DS`), 일반 컴포넌트는 회색 라벨(`이름`)이 보이고, 선택 시 패널에 `컴포넌트:`·`정의:` 줄이 보이며 콘솔 에러가 없다.
 
 ## 개발
 
