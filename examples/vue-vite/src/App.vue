@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Card from './components/Card.vue';
+import Button from './ds/Button.vue';
 
 // 한글 주석: 템플릿 앞에 스크립트 블록이 있어도 위치가 파일 기준인지 확인하는 용도다.
 const items = ['색', '간격', '크기', '글꼴'];
@@ -16,5 +17,6 @@ const items = ['색', '간격', '크기', '글꼴'];
     <Card title="카드">
       <p>카드 본문입니다.</p>
     </Card>
+    <Button label="디자인 시스템 버튼" />
   </main>
 </template>

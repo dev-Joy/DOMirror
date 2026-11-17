@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.28] - 2026-11-17
+
+### Added
+
+- React·Vue 예제에 디자인 시스템 컴포넌트(`src/ds/Button`)와 사용처를 추가하고 `designSystem: ['src/ds/**']` 옵션 설정
+
 ## [0.1.27] - 2026-11-17
 
 ### Added

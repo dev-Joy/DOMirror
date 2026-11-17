@@ -1,4 +1,5 @@
 import { Card } from './components/Card';
+import { Button } from './ds/Button';
 
 // 한글 주석: 이 뒤에 오는 JSX의 라인·컬럼이 어긋나지 않는지(오프셋 단위) 확인하는 용도다.
 const items = ['색', '간격', '크기', '글꼴'];
@@ -19,6 +20,7 @@ export function App() {
       <Card title="카드" className="무시되는-속성">
         <p>카드 본문입니다.</p>
       </Card>
+      <Button>디자인 시스템 버튼</Button>
     </main>
   );
 }
