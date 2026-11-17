@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.51] - 2026-11-18
+
+### Changed
+
+- INT-007 Phase 6: README 옵션 표(`protected`)·MCP 도구 표(`warning`)·`StyleChange` 필드·알려진 한계(경고만·판정 시점) 갱신
+
 ## [0.1.50] - 2026-11-18
 
 ### Added

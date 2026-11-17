@@ -76,6 +76,7 @@ export default defineConfig({
 | `enabled` | `false` | `true`일 때만 주입합니다. 끄면 산출물에 `data-domirror`가 0건입니다. |
 | `injectors` | `[]` | 기본 주입기(React·Vue) 뒤에 추가할 주입기(`Injector` 인터페이스, `@domirror/plugin`에서 타입 제공). |
 | `designSystem` | `[]` | 디자인 시스템 컴포넌트 판별 패턴 목록. 정의 파일 경로 glob(`src/ds/**`) 또는 import specifier(`@acme/ui`)와 일치하면 `data-domirror-ds`를 넣습니다. |
+| `protected` | `designSystem` 값 | 보호 영역 판정 패턴 목록. `designSystem`과 같은 glob·specifier 규칙을 쓰되 **파일 경로 판정에만** 사용합니다. 정의 파일이 일치하면 그 요소에 `data-domirror-protected`를 넣습니다(사용처 측 컴포넌트 태그에는 넣지 않으며, 사용자가 직접 쓴 속성은 중복 주입하지 않습니다). 미설정 시 `designSystem`을 그대로 쓰고, `[]`면 패턴 보호가 없습니다. |
 
 `enabled`가 켜져 있으면 `data-domirror`(소스 위치)와 함께 `data-domirror-component="<이름>|<정의 파일>"`·`data-domirror-ds`(디자인 시스템 여부)가 들어갑니다. `designSystem` 패턴과 일치하는 import를 쓰는 컴포넌트 태그에도 `data-domirror-component`가 붙지만, 그 컴포넌트가 props/attrs를 루트 요소로 전달할 때만 DOM에 남습니다.
 
@@ -140,12 +141,12 @@ MCP 도구:
 
 | 도구 | 입력 | 출력 |
 | :--- | :--- | :--- |
-| `list_pending_changes` | 없음 | `{ changes: StyleChange[] }` — 아직 반영되지 않은 변경 |
+| `list_pending_changes` | 없음 | `{ changes: PendingChange[] }` — 아직 반영되지 않은 변경. 보호 영역에서 온 항목에는 `warning`이 함께 오며, 경고만 하고 차단하지 않습니다. |
 | `mark_changes_applied` | `{ ids: string[] }` (1개 이상) | `{ applied: string[], notFound: string[] }` |
 | `list_comments` | 없음 | `{ comments: ScreenComment[] }` — 아직 처리하지 않은(open) 코멘트 |
 | `mark_comments_resolved` | `{ ids: string[] }` (1개 이상) | `{ resolved: string[], notFound: string[] }` |
 
-`StyleChange` 주요 필드: `source`(`file`·`line`·`column`·`inherited`), `selectorHint`, `property`, `before`(`authored`: 작성 원문 또는 `null`, `computed`: 계산값), `after`, `pageUrl`.
+`StyleChange` 주요 필드: `source`(`file`·`line`·`column`·`inherited`·`protected`(선택)), `selectorHint`, `property`, `before`(`authored`: 작성 원문 또는 `null`, `computed`: 계산값), `after`, `pageUrl`, `warning`(선택: `code`=`protected-area`, `reason`=`pattern`·`node_modules`, `message`=고정 안내 문구).
 
 `ScreenComment` 주요 필드: `source`(`file`·`line`·`column`·`inherited`), `selectorHint`, `pageUrl`, `body`, `createdAt`, `status`(`open`·`resolved`), `id`. 서버는 `POST /comments`로 받은 코멘트를 메모리에 보관하고, `list_comments`는 `open`만 돌려줍니다.
 
@@ -293,6 +294,8 @@ AI 프롬프트 복사: MCP를 사용하지 않는 AI 도구(웹 채팅 등)에 
 - **새로고침·HMR**: 패널을 켠 채 편집한 요소가 HMR·새로고침 등으로 교체되면 해당 항목에 "페이지 표시가 사라졌을 수 있음"이 표시되고 변경 내역은 유지됩니다. 교체된 새 요소에는 편집값이 다시 적용되지 않으므로, 필요하면 요소를 다시 선택해 편집하세요. 그 항목을 되돌리면 교체된 요소는 원복되지 않고(아직 페이지에 남은 같은 소스 요소만 원복) 내역이 지워집니다.
 - **여러 탭**: 같은 origin의 여러 탭은 변경 내역 저장소를 함께 씁니다. 각 탭은 저장 직전에 저장소를 다시 읽어 자기가 만들거나 지운 항목만 반영하므로 다른 탭의 미전송 내역을 덮어쓰지 않습니다. 다른 탭의 내역은 다시 켤(또는 새로고침할) 때 목록에 나타납니다. 다만 다른 탭이 이미 보낸 항목은 원래 탭의 목록에 그대로 남습니다. 원래 탭에서 그 항목을 다시 편집하면 같은 id로 저장소에 다시 저장되고, 보내면 서버의 그 항목이 새 값과 반영 전 이전값으로 대기 상태로 돌아갑니다. 원래 탭에서 되돌리면 페이지는 원래 값이지만 서버에는 보낸 값이 대기 중으로 남습니다. 다른 탭에서 보낸 뒤에는 원래 탭을 다시 켜거나 새로고침한 뒤 편집하세요. 또한 두 탭에서 같은 소스·속성을 각각 편집하면 다시 켤(또는 새로고침할) 때 같은 소스·속성 항목이 2건 복원되고, 그대로 보내면 두 값이 모두 에이전트에 전달되어 서로 상충하는 지시가 됩니다. 같은 소스·속성은 한 탭에서만 편집하거나, 다시 켠 뒤 목록에서 같은 `파일:라인:컬럼`·속성 항목이 여러 건이면 남길 항목만 두고 나머지를 되돌리기로 지운 다음 보내세요. 화면 코멘트는 변경 내역과 달리 탭 간 병합 없이 마지막 저장이 이기므로, 여러 탭에서 같은 페이지 코멘트를 동시에 작성하면 한쪽 목록이 덮어써질 수 있습니다.
 - **위치 검증 없음**: 서버는 소스 라인이 바뀌었는지 검증하지 않습니다. 편집 후 소스가 바뀌어 라인이 어긋날 수 있으므로 **에이전트가 `selectorHint`와 `before`로 대조할 책임**이 있습니다. 반영 품질은 에이전트에 달려 있습니다.
+- **보호 영역은 경고만**: 보호 패턴에 걸린 정의 파일에서 온 변경은 `warning`이 붙을 뿐 차단되지 않으며, 반영 여부는 에이전트·사용자가 판단합니다. 위치를 조상에서 물려받은 요소는 그 조상의 속성으로 판정하고, `source.file`에 `node_modules` 세그먼트가 있으면 `reason`이 `node_modules`(우선), 아니고 `source.protected`가 `true`면 `pattern`입니다.
+- **보호 판정 시점**: 판정은 빌드 시점에 이뤄지므로 `protected` 패턴을 바꾸면 dev 서버를 재시작(재변환)해야 반영됩니다. `node_modules` 규칙은 커스텀 주입기 등 다른 경로로 들어온 위치에 대한 방어 규칙이고, `@acme/ui` 같은 패키지형 디자인 시스템 specifier는 파일 경로가 아니라 보호 판정에 쓰이지 않습니다.
 - **SDK 업그레이드**: 서버의 MCP SDK(`@modelcontextprotocol/server`·`@modelcontextprotocol/node`)를 올리면 응답에 CORS 헤더가 생기지 않는지 다시 확인하세요.
 
 ## 수동 확인 체크리스트
