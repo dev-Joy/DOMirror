@@ -14,7 +14,7 @@
 ## Active (작업 중)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
 | :--- | :--- | :--- | :--- | :--- |
-| [INT-002](active/INT-002-devtools-mcp-apply-verify/intent.md) | chrome-devtools-mcp로 소스 반영 결과 자동 확인 (워크플로 문서화) | P2 | 4/5 | 2026-11-17 |
+| [INT-002](active/INT-002-devtools-mcp-apply-verify/intent.md) | chrome-devtools-mcp로 소스 반영 결과 자동 확인 (워크플로 문서화) | P2 | 5/5 | 2026-11-17 |
 
 ## Hold (보류)
 | ID | 제목 | 보류 사유 | 재개 조건 | 갱신 |
