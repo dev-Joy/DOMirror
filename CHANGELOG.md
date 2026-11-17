@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.12] - 2026-11-17
+
+### Added
+
+- INT-002 intent·spec·plan 작성(chrome-devtools-mcp로 소스 반영 결과 자동 확인)
+- INBOX 아이디어 IDEA-20261117-01(전송 후 인라인 !important 잔존)
+
 ## [0.1.11] - 2026-11-17
 
 ### Changed
