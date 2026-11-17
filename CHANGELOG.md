@@ -2,6 +2,30 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.19] - 2026-11-17
+
+### Fixed
+
+- CHANGELOG 0.1.16~0.1.18 누락 항목 보충(버전 갱신 스크립트 인코딩 오판으로 누락)
+
+## [0.1.18] - 2026-11-17
+
+### Changed
+
+- INT-002 완료 전이(done)와 result.md 작성
+
+## [0.1.17] - 2026-11-17
+
+### Changed
+
+- INT-002 T-05 완료 기록(정합성 재판정 PASS_WITH_NOTES)
+
+## [0.1.16] - 2026-11-17
+
+### Changed
+
+- INT-002 spec FR-4·FR-5·E-3을 요소별 기대값 비교 동작에 맞게 동기화
+
 ## [0.1.15] - 2026-11-17
 
 ### Changed
