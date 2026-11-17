@@ -40,11 +40,11 @@
 - FR-3 검증 프롬프트 예: 기존 프롬프트 예(`README.md:147-152`)를 대체하거나 그 아래에 "자동 확인 포함" 예를 추가한다. 순서: `list_pending_changes` → 소스 반영 → 파일 저장 후 `pageUrl` 열기(이미 열려 있으면 다시 불러오기) → 항목마다 검증 스니펫 실행 → 판정별 처리.
 - FR-4 검증 스니펫: README에 `evaluate_script`로 실행할 JS 1개를 싣는다. 입력은 `source`(문자열 `file:line:column`)·`property`·`after`이고 출력은 `{ status, expected, actual[], count }`이다. 동작은 다음과 같다.
   - `[data-domirror="<source>"]` 요소를 모두 찾는다.
-  - `after`를 임시 요소에 적용해 브라우저 정규화 값(`expected`)을 구한다.
-  - 각 요소의 `getComputedStyle(...).getPropertyValue(property)`와 비교한다.
+  - `after`를 요소마다 임시 요소에 적용해 그 요소 기준 브라우저 정규화 값을 구한다(보고되는 `expected`는 첫 요소 기준 값).
+  - 각 요소의 계산값(`getComputedStyle(...).getPropertyValue(property)`)을 그 요소 기준 정규화 기대값과 비교한다.
 - FR-5 판정 규칙: 판정별 처리는 아래와 같다.
-  - `match`: 모든 요소가 `expected`와 같다. 해당 id만 `mark_changes_applied`로 표시한다.
-  - `mismatch`: 하나라도 다르다. 표시하지 않고, 기대값·실제값과 함께 사용자에게 보고한다.
+  - `match`: 모든 요소의 계산값이 각 요소 기준 정규화 기대값과 같다(보고되는 `expected`는 첫 요소 기준 값). 해당 id만 `mark_changes_applied`로 표시한다.
+  - `mismatch`: 하나라도 다르다(요소별 정규화 후 비교). 표시하지 않고, 기대값·실제값과 함께 사용자에게 보고한다.
   - `unverifiable`: 요소 0개이거나 `source.inherited === true`다. 표시하지 않고 사유와 함께 보고한다.
   - 불일치·검증 불가 항목은 대기 상태로 남는다.
 - FR-6 사용법 갱신: `README.md:163` 8단계에 "chrome-devtools-mcp를 등록했다면 에이전트 보고로 확인(새로고침 생략 가능)"을 병기한다. 미등록 사용자의 기존 흐름은 그대로 둔다.
@@ -75,7 +75,7 @@
 ## 7. 예외 · 엣지 케이스
 - E-1 익스텐션 켜진 탭에서 비교: 인라인 `!important`가 남아 거짓 일치가 발생한다. FR-2로 별도 브라우저를 쓰게 하고 README에 이유를 명시한다.
 - E-2 값 표기 차이(`#fff` ↔ `rgb(255, 255, 255)`, `1rem` ↔ `16px`): 임시 요소 정규화(FR-4)로 비교한다. 정규화해도 다른 경우는 `mismatch`로 보고한다(추론, 구현 시 예제로 확인).
-- E-3 같은 소스의 여러 요소(`README.md` 알려진 한계 "같은 소스의 여러 요소"): 모든 요소가 같아야 `match`이고 `count`를 보고한다.
+- E-3 같은 소스의 여러 요소(`README.md` 알려진 한계 "같은 소스의 여러 요소"): 모든 요소가 각 요소 기준 정규화 기대값과 같아야 `match`이고 `count`를 보고한다(`expected`는 첫 요소 기준 값).
 - E-4 `source.inherited === true`(조상 위치 사용): 요소를 특정할 수 없으므로 `unverifiable`로 처리한다.
 - E-5 상태 의존 값(`:hover` 등)이나 로그인·앱 상태가 필요한 페이지: 별도 임시 프로필에서 재현되지 않으면 `unverifiable` 또는 `mismatch`가 될 수 있다. 보고만 하고 표시하지 않는다.
 - E-6 HMR·저장 지연: 파일 저장 직후 `navigate_page`로 다시 불러오고 `wait_for`(또는 짧은 재시도 1회)를 쓴 뒤 비교하도록 안내한다.
