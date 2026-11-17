@@ -1,6 +1,6 @@
 # Spec: 화면 위 코멘트 작성과 GitHub Issues·Slack 연동
-- Intent: [INT-005](intent.md) | Status: planned | 작성일: 2026-11-17
-- Intent updated_at: 2026-11-17T15:57:18+09:00
+- Intent: [INT-005](intent.md) | Status: active | 작성일: 2026-11-17
+- Intent updated_at: 2026-11-17T21:12:37+09:00
 
 ## 1. 개요
 - 원 요구: IDEA-20261115-04 "화면 위 원하는 자리에 코멘트를 남기고 GitHub Issues·Slack으로 연동". 출처는 웍스피어 블로그 "피그마 대신 코드로 디자인하면 어떨까"의 코멘트 기능이며, INT-001에서 범위 밖으로 둔 기능을 이 intent로 따로 진행한다(intent D-02).

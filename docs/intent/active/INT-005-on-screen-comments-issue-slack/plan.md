@@ -1,6 +1,6 @@
 # Plan: 화면 위 코멘트 작성과 GitHub Issues·Slack 연동
 - Intent: [INT-005](intent.md) | Tier: 3 | 작성일: 2026-11-17
-- Intent updated_at: 2026-11-17T15:57:18+09:00
+- Intent updated_at: 2026-11-17T21:12:37+09:00
 - Spec: [spec.md](spec.md)
 
 ## 1. Tier 산정
