@@ -1,7 +1,7 @@
 ---
 id: INT-009
 title: CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집
-status: active
+status: done
 priority: P2
 created: 2026-11-17
 updated: 2026-11-18
@@ -50,7 +50,12 @@ updated_at: 2026-11-17T23:59:16+09:00
 - [x] 목록 외 속성을 이름 직접 입력으로 추가하는 자유 입력을 허용하는가? / 컬러 피커와 레이아웃을 별도 intent로 분해하는가? → 답변: 자유 입력 제외(필요 시 INBOX 아이디어), 분해 없이 1개 유지 (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] 색 변환 모듈 `color.ts`와 `color.test.ts` (plan Step 2·4, AC-1)
-- [ ] T-02 [P2] 레이아웃 속성 정의(`properties.ts`)와 `properties.test.ts` (plan Step 3·4, AC-2·AC-3)
-- [ ] T-03 [P2] 패널 컬러 피커·select·flex/grid 조건부 표시(`panel.ts`) (plan Step 5, FR-1~FR-10) (depends: T-01, T-02)
-- [ ] T-04 [P2] 빌드·브라우저 실측 (plan Step 6, AC-4~AC-7) (depends: T-03)
+- [x] T-01 [P2] 색 변환 모듈 `color.ts`와 `color.test.ts` (plan Step 2·4, AC-1) (2026-11-18)
+- [x] T-02 [P2] 레이아웃 속성 정의(`properties.ts`)와 `properties.test.ts` (plan Step 3·4, AC-2·AC-3) (2026-11-18)
+- [x] T-03 [P2] 패널 컬러 피커·select·flex/grid 조건부 표시(`panel.ts`) (plan Step 5, FR-1~FR-10) (depends: T-01, T-02) (2026-11-18)
+- [x] T-04 [P2] 빌드·브라우저 실측 (plan Step 6, AC-4~AC-7) (depends: T-03) (2026-11-18)
+
+## 결과
+- 완료일: 2026-11-18. 색상 필드에 네이티브 컬러 피커(텍스트 입력 병행, `change` 시 1회 기록)를 붙이고, 계산된 display가 flex/grid일 때만 레이아웃 컨테이너 속성 그룹(키워드는 select)을 표시하며 display 변경 시 편집기를 즉시 재구성한다. `StyleChange`·MCP 계약·의존성 변경 0.
+- Tier 2 검증 Pass(lint·typecheck·test 28 files/326 tests·build Exit 0, ego-browser AC-3·AC-5·AC-7 PASS, 콘솔 에러 0), 정합성 게이트 조건부-실행 1-pass `PASS_WITH_NOTES`(비차단 NOTE만).
+상세: [result.md](result.md)

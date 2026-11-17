@@ -5,7 +5,7 @@
 ## 요약
 | 상태 | planned | active | hold | done | **합계** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| 건수 | 3 | 1 | 0 | 6 | **10** |
+| 건수 | 3 | 0 | 0 | 7 | **10** |
 
 ## Planned (미착수)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
@@ -17,7 +17,6 @@
 ## Active (작업 중)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
 | :--- | :--- | :--- | :--- | :--- |
-| [INT-009](active/INT-009-color-picker-layout-props/intent.md) | CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집 | P2 | 0/4 | 2026-11-18 |
 
 ## Hold (보류)
 | ID | 제목 | 보류 사유 | 재개 조건 | 갱신 |
@@ -32,3 +31,4 @@
 | [INT-005](done/INT-005-on-screen-comments-issue-slack/intent.md) | 화면 위 코멘트 작성과 GitHub Issues·Slack 연동 | 2026-11-17 | 소스 위치 기반 코멘트 작성·번호 핀·`chrome.storage.local` 복원, 서버 `POST /comments`·`CommentStore`(500건), MCP `list_comments`·`mark_comments_resolved`. Tier 3 검증 Pass(AC-1~AC-8), 게이트 필수(하드) 2-pass FAIL→PASS_WITH_NOTES. GitHub Issues·Slack 연동은 후속 ([result.md](done/INT-005-on-screen-comments-issue-slack/result.md)) |
 | [INT-006](done/INT-006-copy-ai-implementation-prompt/intent.md) | 선택 요소·변경 내역을 AI 구현 프롬프트로 복사 | 2026-11-17 | `prompt.ts` `buildPrompt`(내역 전체/선택 요소 한국어 마크다운 프롬프트)+단위 테스트 19케이스, 패널 `AI 프롬프트 복사` 버튼·`navigator.clipboard`→`execCommand` 폴백, README 1단락. Tier 2 검증 Pass(AC-1~AC-8, 291 tests), 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-006-copy-ai-implementation-prompt/result.md)) |
 | [INT-007](done/INT-007-protected-area-edit-guard/intent.md) | 수정 금지 영역(공통 컴포넌트·디자인 시스템 원본) 수정 경고 하네스 | 2026-11-18 | 플러그인 보호 영역 표식 주입(React·Vue)·익스텐션 `source.protected` 전달·`list_pending_changes` 선택 필드 `warning`(차단 없음). Tier 3 검증 Pass, 게이트 필수(하드) 2-pass PASS_WITH_NOTES ([result.md](done/INT-007-protected-area-edit-guard/result.md)) |
+| [INT-009](done/INT-009-color-picker-layout-props/intent.md) | CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집 | 2026-11-18 | 색상 필드 네이티브 피커(텍스트 병행)·flex/grid일 때만 레이아웃 컨테이너 속성 그룹(select)·display 편집 시 즉시 재구성, 계약·의존성 변경 0. Tier 2 검증 Pass(326 tests, ego-browser AC-7), 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-009-color-picker-layout-props/result.md)) |
