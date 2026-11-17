@@ -2,6 +2,16 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.22] - 2026-11-17
+
+### Added
+
+- shared에 `data-domirror-component`·`data-domirror-ds` 상수와 `formatComponentInfo`·`parseComponentInfo` 추가
+
+### Changed
+
+- `Injector.transform` 컨텍스트를 `InjectorContext`로 분리하고 선택 필드 `isDesignSystem` 추가(기존 커스텀 주입기 호환)
+
 ## [0.1.21] - 2026-11-17
 
 ### Changed
