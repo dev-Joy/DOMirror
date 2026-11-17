@@ -20,6 +20,7 @@
   - 색 변환 순수 모듈 신규(`packages/extension/src/color.ts`): 계산값(`rgb()`/`rgba()`/hex)을 피커용 `#rrggbb`로 변환.
   - 단위 테스트 신규: `packages/extension/test/color.test.ts`, `packages/extension/test/properties.test.ts`.
   - 패널 CSS(`panel.ts:98-104` `EDITOR_CSS`)에 피커·select 배치 스타일 추가.
+  - `content.ts` `#edit`: display 편집 성공 시 `#renderEditor()` 재호출(FR-8).
 - 레이아웃 속성 범위(intent 미해결 질문 답변 "컨테이너만"): `display`·`flex-direction`·`flex-wrap`·`justify-content`·`align-items`·`align-content`·`grid-template-columns`·`grid-template-rows`·`row-gap`·`column-gap`.
 - Out-of-scope
   - 자식 아이템 속성(`align-self`·`flex-grow/shrink/basis`·`order`·`grid-column/row`) — 미해결 질문 답변 "컨테이너만".
@@ -45,7 +46,7 @@
   - `packages/extension/src/panel.ts:172` `container.replaceChildren(box)` — 다시 그릴 때마다 편집기 전체를 교체한다(R-1).
   - `packages/extension/src/panel.ts:98-104` `EDITOR_CSS` (`.editor .group/.grid` 2열 grid/label/input).
 - 익스텐션 (재사용, 변경 없음 예상)
-  - `packages/extension/src/content.ts:592-600` `#renderEditor()`. `:596` `const cs = getComputedStyle(el);`, `:597` `values = Object.fromEntries(EDITABLE_PROPERTIES.map(({ name }) => [name, cs.getPropertyValue(name)]));`. `display`를 목록에 넣으면 `values.display`로 계산값이 자동 전달되므로 content.ts 수정은 필요 없다(D-S2).
+  - `packages/extension/src/content.ts:592-600` `#renderEditor()`. `:596` `const cs = getComputedStyle(el);`, `:597` `values = Object.fromEntries(EDITABLE_PROPERTIES.map(({ name }) => [name, cs.getPropertyValue(name)]));`. `display`를 목록에 넣으면 `values.display`로 계산값이 자동 전달된다. display 값 수신은 기존 `#renderEditor`(:597) 경로를 쓰되, `#edit` 성공 경로에 재렌더가 없어 FR-8용 1줄을 추가한다(D-S2).
   - `packages/extension/src/content.ts:509-548` `#edit`. `:526` `CSS.supports(property, value)` 검증, `:538` `readBefore(el, property)`, `:545` `this.#tracker.edit(...)`. 적용은 `edit-tracker.ts:24` → `applier.ts:40` `el.style.setProperty(property, value, 'important')`. 속성 이름 무관 경로다.
   - `packages/extension/src/css-read.ts:228` `export function readBefore(el: Element, property: string): BeforeValue` (본문 :229-245, 종료 :246). 속성 이름 무관.
   - `packages/extension/src/prompt.ts:54` `function changesPrompt(changes: readonly LocalChange[]): string` (본문 :54-89). 속성 이름 분기 없음.
@@ -62,7 +63,7 @@
 
 ## 4. 기능 요구사항 (FR-n)
 - FR-1 (컬러 피커): `group === 'color'`인 필드(`color`·`background-color`)는 텍스트 입력 옆에 `<input type="color">`를 함께 둔다.
-  - 피커 초기값은 텍스트 값을 `cssColorToHex`로 변환한 `#rrggbb`다. 변환할 수 없으면(`var()`·`currentcolor` 등) 피커는 `#000000`으로 두고 텍스트 값은 그대로 둔다.
+  - 피커 초기값은 텍스트 값을 `parsePickerColor`로 변환한 `#rrggbb`다. 변환할 수 없으면(`var()`·`currentcolor` 등) 피커는 `#000000`으로 두고 텍스트 값은 그대로 둔다.
   - 피커에서 고른 값은 `#rrggbb`로 `handlers.onEdit(name, value)`에 보내고, 같은 값을 텍스트 입력에도 반영한다. 미리보기 시점은 §10 Q-1 답변에 따른다.
 - FR-2 (텍스트 병행): 색 필드의 텍스트 입력은 기존과 같이 동작한다(`change` → `onEdit`). 알파·`rgba()`·`hsl()`·`var()` 값은 텍스트로 입력한다.
 - FR-3 (알파 표시): 현재 색의 알파가 1 미만이면 피커에 `title="알파 값은 텍스트로 편집하세요(피커는 불투명 색만 지원)"`를 단다. 피커로 고르면 불투명 hex가 적용된다(알파 손실은 사용자 선택).
@@ -72,12 +73,12 @@
   - flex·grid 공통: `justify-content`·`align-items`·`align-content`·`row-gap`·`column-gap`
   - flex 전용: `flex-direction`·`flex-wrap`
   - grid 전용: `grid-template-columns`·`grid-template-rows`
-  - `values`가 null(선택 요소 없음)이면 현재 동작대로 빈 값 필드를 그리되, 컨테이너 조건 속성은 숨긴다.
+  - `values`가 null(선택 요소 없음)이면 기존대로 편집기를 비운다.
 - FR-7 (키워드 선택지): `options`가 정의된 속성은 `<select>`로 그린다(§6 선택지 목록).
   - 현재 계산값이 선택지에 없으면(예: `safe center`, `normal`) 그 값을 맨 앞 옵션으로 추가하고 선택 상태로 둔다.
   - `change` 시 `handlers.onEdit(name, select.value)`를 호출한다.
   - `grid-template-*`·`row-gap`·`column-gap`은 자유 값이므로 텍스트 입력을 유지한다.
-- FR-8 (display 변경 반영): `display`를 바꾸면 기존 `#edit` → `#renderEditor` 재호출로 레이아웃 그룹 표시가 즉시 갱신된다(예: `block`→`flex` 시 flex 속성 등장).
+- FR-8 (display 변경 반영): `display`를 바꾸면 `#edit` 성공 시 property가 display이면 `#renderEditor` 재호출로 레이아웃 그룹 표시가 즉시 갱신된다(예: `block`→`flex` 시 flex 속성 등장).
 - FR-9 (기록·전송 경로 불변): 피커·select·레이아웃 속성의 변경도 기존 `#edit`(`CSS.supports` 검증 → `readBefore` → tracker)로 `LocalChange`에 기록되고, `property`/`before`/`after` 형식 그대로 MCP 전송과 프롬프트 복사에 실린다.
 - FR-10 (disabled 일관성): `renderEditor`의 `disabled`(전송 중)일 때 피커·select도 비활성화한다.
 
@@ -168,7 +169,7 @@ export function parsePickerColor(value: string): PickerColor | null;
 ## 9. 가정과 리스크
 - 결정(spec 단계)
   - D-S1: 입력 종류는 별도 `kind` 필드 대신 `group === 'color'` → 피커, `options` 유무 → select로 판정한다. 근거: 최소 변경(기존 그룹 구분 재사용), 메타데이터 중복 방지. 폐기 대안: `input: 'text' | 'color' | 'select'` 필드.
-  - D-S2: display 계산값은 `display`를 `EDITABLE_PROPERTIES`에 넣어 `content.ts:597` 기존 경로로 받는다. 근거: content.ts·`renderEditor` 시그니처 무변경. 폐기 대안: `renderEditor`에 display 인자 추가.
+  - D-S2: display 계산값은 `display`를 `EDITABLE_PROPERTIES`에 넣어 `content.ts:597` 기존 경로로 받는다. 근거: content.ts는 값 수신 경로 무변경, display 재렌더 1줄만 추가. `renderEditor` 시그니처 무변경. 폐기 대안: `renderEditor`에 display 인자 추가.
   - D-S3: 컨테이너 속성을 flex/grid 종류별로 나눠 표시한다(§6 표). 근거: flex 컨테이너에 `grid-template-*`는 효과가 없어 잘못된 편집을 유도한다. intent 답변("flex/grid일 때만")을 속성 단위로 세분화한 것이며 표시 조건 자체는 동일하다. 폐기 대안: flex/grid면 10개 모두 표시.
   - D-S4: 색 변환은 별도 순수 모듈 `color.ts`로 둔다. 근거: panel에는 DOM 테스트 하네스가 없고 저장소에 hex/rgb 변환 유틸이 0건이다(`packages/*/src` grep).
 - 가정

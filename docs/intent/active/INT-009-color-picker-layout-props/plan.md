@@ -5,12 +5,12 @@
 
 ## 1. Tier 산정
 - 등급은 Tier 2(Standard)다.
-  - 변경은 extension 패키지에 한정된다: `properties.ts`·`panel.ts` 수정, 신규 `color.ts`·`color.test.ts`·`properties.test.ts`.
+  - 변경은 extension 패키지에 한정된다(6개 파일): `properties.ts`·`panel.ts` 수정, `content.ts` 1줄 추가(FR-8 display 재렌더), 신규 `color.ts`·`color.test.ts`·`properties.test.ts`.
   - `EditableProperty` 타입 확장은 익스텐션 내부 타입이며 선택 필드 추가라 기존 import 지점(`panel.ts:4`·`content.ts:46`)이 깨지지 않는다.
   - 공개 계약(`StyleChange`·MCP 도구·서버·manifest)과 의존성은 바꾸지 않는다(spec NFR-1·NFR-2).
   - UI 동작 변경이므로 AC-7 브라우저 실측을 검증에 포함한다.
 - 하드 게이트 후보는 아니다(`[배포·계약 자산 경로]` 해당 없음).
-- 상향 조건: 외부 컬러 피커 의존성 도입, `StyleChange`·`prompt.ts` 변경이 필요해지면 Tier 3·§A 3호로 상향하고 사용자 확인 후 진행한다. spec §10 Q-1이 (b)로 확정되면 `EditorHandlers`·`content.ts`가 추가 변경되지만 Tier 2는 유지한다.
+- 상향 조건: 외부 컬러 피커 의존성 도입, `StyleChange`·`prompt.ts` 변경이 필요해지면 Tier 3·§A 3호로 상향하고 사용자 확인 후 진행한다. spec §10 Q-1은 (a)로 확정되어 `EditorHandlers`는 변경하지 않는다.
 - intent D-01(P2)·D-02(1개 intent 유지)·D-03(기존 변경 내역 경로)을 따른다.
 
 ## 2. 실행 순서 (Steps)
@@ -35,7 +35,8 @@
    - `group === 'color'`면 텍스트 입력 + `<input type="color">` 병행(FR-1~FR-3). 피커 이벤트는 Q-1 답변대로 연결하고 `onEdit` 후 텍스트 값도 동기화한다.
    - 피커·select에도 `disabled`·`dataset.property`를 적용한다(FR-10).
    - `EDITOR_CSS`(`:98-104`)에 피커·select 배치 스타일 추가.
-   - Q-1 = (b)인 경우에만: `EditorHandlers`에 `onPreview` 추가, `content.ts` `#renderEditor`(`:599`)에서 연결.
+   - Q-1 = (a) 확정: 피커는 `change` 시 1회 `onEdit`, `EditorHandlers`·`onPreview` 추가 없음.
+   - FR-8: `content.ts` `#edit` 성공 경로 끝에 property가 display이면 `#renderEditor()` 재호출 1줄 추가.
    - 검증: `pnpm typecheck`·`pnpm lint`
    - 롤백: `git checkout -- packages/extension/src/panel.ts packages/extension/src/content.ts`
 6. 빌드·실측: `pnpm build` 후 `examples/react-vite`를 띄우고(`pnpm --dir examples/react-vite dev --port 5199` 시도, 실패 시 기본 5173 사용 후 보고에 실제 포트 기록) 빌드한 익스텐션으로 spec AC-7 ①~⑤와 AC-5를 확인한다. ⑤·AC-5 전송 부분은 `node packages/server/dist/cli.js` 기동 상태에서 확인한다.
@@ -57,7 +58,7 @@
   - AC-4: `git diff --stat -- packages/shared packages/server packages/extension/manifest.json packages/extension/src/prompt.ts package.json packages/extension/package.json pnpm-lock.yaml` 0줄.
   - AC-3(`CSS.supports` 유효성)·AC-5·AC-7은 `examples/react-vite` + 빌드한 익스텐션으로 실측한다. 도구 순서는 `ego-browser → Aside MCP → Playwright`, 콘솔 에러 0건. 모든 도구가 불가하면 미수행 사유와 수동 체크리스트를 완료 보고에 남긴다.
   - 신규·수정 파일 CR 0건·BOM 없음.
-- 게이트: 조건부-실행 / 근거: ③ 미충족(intent 연계 FR 10건·AC 7건 > 3), ① 미충족(변경 파일 5개 > 3) / 방식: 1-pass
+- 게이트: 조건부-실행 / 근거: ③ 미충족(intent 연계 FR 10건·AC 7건 > 3), ① 미충족(변경 파일 6개 > 3) / 방식: 1-pass
 
 ## 5. 리스크 · 파급
 - R-1 (재렌더와 피커): `panel.ts:172` `replaceChildren`로 피커가 닫힐 수 있다. Q-1 결정과 AC-7 ②로 확인하고, 실패 시 Step 5로 회귀한다.
