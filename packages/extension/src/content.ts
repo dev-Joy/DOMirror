@@ -316,6 +316,8 @@ class EditSession {
   readonly #pins: CommentPins;
   /** 목록 영역. 핀은 패널 Shadow root에 그린다. */
   readonly #commentList: HTMLElement;
+  /** 작성 시 선택한 요소 참조(id별). 새로고침 후에는 없으므로 소스 위치로 폴백한다(E-2). */
+  readonly #commentAnchors = new Map<string, Element>();
   #comments: LocalComment[] = [];
   /** 저장을 순서대로 실행한다(전송 시작·끝 상태가 연달아 저장된다). */
   #saveQueue: Promise<void> = Promise.resolve();
@@ -426,6 +428,7 @@ class EditSession {
     this.#observer.disconnect();
     this.#highlight.dispose();
     this.#pins.dispose();
+    this.#commentAnchors.clear();
     // 페이지 표시는 원복하고 내역은 저장소에 남긴다(NFR-3·E-6).
     this.#tracker.restoreAll();
   }
@@ -569,6 +572,8 @@ class EditSession {
       send: 'pending',
     };
     this.#commentForm.clear();
+    // 작성 시 선택한 요소를 핀 위치로 고정한다(E-2).
+    this.#commentAnchors.set(comment.id, el);
     this.#setComments(addComment(this.#comments, comment));
     this.#panel.setStatus('info', `코멘트를 추가했습니다: ${preview(text)}`);
     void this.#panel.sendComments([comment.id]);
@@ -606,7 +611,7 @@ class EditSession {
       error: c.error,
     }));
     renderCommentList(this.#commentList, items, { onResend: (id) => void this.#panel.sendComments([id]) });
-    this.#pins.update(page);
+    this.#pins.update(page, this.#commentAnchors);
   }
 
   /** 선택·전송 상태로 작성 가능 여부를 정한다(FR-1·E-1·E-7). */

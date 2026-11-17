@@ -267,8 +267,11 @@ export interface CommentPinsOptions {
 }
 
 export interface CommentPins {
-  /** 핀 집합을 목록과 맞춘다(추가·삭제). 번호는 전달한 목록 순서(1부터)다. */
-  update(comments: readonly LocalComment[]): void;
+  /**
+   * 핀 집합을 목록과 맞춘다(추가·삭제). 번호는 전달한 목록 순서(1부터)다.
+   * `anchors`에 있는 요소는 작성 시 선택한 요소로 고정해 쓴다(E-2).
+   */
+  update(comments: readonly LocalComment[], anchors?: ReadonlyMap<string, Element>): void;
   dispose(): void;
 }
 
@@ -291,6 +294,8 @@ interface Pin {
  */
 export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {}): CommentPins {
   const pins = new Map<string, Pin>();
+  // #anchors: 작성 시 선택한 요소 고정(E-2). 페이지에서 사라지면 지우고 소스 위치 첫 일치로 폴백한다.
+  const fixed = new Map<string, Element>();
   let frame = 0;
   let href = location.href;
   let disposed = false;
@@ -357,6 +362,21 @@ export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {
     return entry;
   };
 
+  /** 고정 요소가 살아 있으면 그것을, 아니면 소스 위치 첫 일치 요소를 쓴다(E-2). */
+  const resolve = (comment: LocalComment): Element | null => {
+    const anchored = fixed.get(comment.id);
+    if (anchored) {
+      if (anchored.isConnected) return anchored;
+      fixed.delete(comment.id);
+    }
+    return resolveCommentElement(comment);
+  };
+
+  const syncEl = (p: Pin): void => {
+    if (p.el && !p.el.isConnected) p.el = null;
+    if (!p.el) p.el = resolve(p.comment);
+  };
+
   const tick = (): void => {
     frame = requestAnimationFrame(tick);
     if (disposed) return;
@@ -367,8 +387,7 @@ export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {
     }
     let changed = false;
     for (const p of pins.values()) {
-      if (p.el && !p.el.isConnected) p.el = null;
-      if (!p.el) p.el = resolveCommentElement(p.comment);
+      syncEl(p);
       const present = p.el !== null;
       if (present !== p.present) {
         p.present = present;
@@ -381,11 +400,13 @@ export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {
   frame = requestAnimationFrame(tick);
 
   return {
-    update(comments) {
+    update(comments, anchors) {
       if (disposed) return;
       const ids = new Set<string>();
       comments.forEach((comment, index) => {
         ids.add(comment.id);
+        const anchored = anchors?.get(comment.id);
+        if (anchored) fixed.set(comment.id, anchored);
         let p = pins.get(comment.id);
         if (!p) {
           p = create(comment);
@@ -406,8 +427,12 @@ export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {
         p.pin.remove();
         p.tip.remove();
         pins.delete(id);
+        fixed.delete(id);
       }
-      for (const p of pins.values()) place(p);
+      for (const p of pins.values()) {
+        syncEl(p);
+        place(p);
+      }
     },
     dispose() {
       disposed = true;
@@ -419,6 +444,7 @@ export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {
         p.tip.remove();
       }
       pins.clear();
+      fixed.clear();
     },
   };
 }
