@@ -5,7 +5,6 @@ import { FakeElement } from './fake-element.js';
 
 const P = 'padding-top';
 const SOURCE = { file: 'src/App.vue', line: 5, column: 7, inherited: false };
-const rebase = { newId: () => 'id-new', now: 'T' };
 
 let seq = 0;
 
@@ -30,110 +29,82 @@ function ch(el: FakeElement, rule: string, after: string, overrides: Partial<Loc
 const visible = (el: FakeElement, rule: string): string => el.style.getPropertyValue(P) || rule;
 const labels = (log: readonly LocalChange[]): string[] => log.map((c) => `${originalValue(c)}→${c.after}`);
 
-type DuringSend = (tracker: EditTracker, log: LocalChange[], el: FakeElement) => LocalChange[];
+type Op = (tracker: EditTracker, log: LocalChange[], el: FakeElement) => LocalChange[];
+/** D-1·D-A·F-1·R-2를 만들던 응답 전 조작. */
+const OPS: [string, Op][] = [
+  ['되돌리기', (t, log) => t.revert(log, log[0].id)],
+  ['전체 되돌리기', (t, log) => t.revertAll(log)],
+  ['원래 값 재편집', (t, log, el) => t.edit(log, el, ch(el, '0px', '0px'))],
+  ['다른 값 재편집', (t, log, el) => t.edit(log, el, ch(el, '0px', '30px'))],
+];
 
-/** 0→10 편집 → 전송 시작 → (전송 중 조작) → 전송 성공. */
-function concurrentPath(during: DuringSend) {
-  const tracker = new EditTracker();
-  const el = new FakeElement();
-  let log = tracker.edit([], el, ch(el, '0px', '10px'));
-  const sent = tracker.beginSend(log);
-  log = during(tracker, log, el);
-  const during0 = log;
-  const result = tracker.endSend(log, sent, rebase);
-  return { tracker, el, during: during0, ...result };
-}
-
-/** 순차 기준: 전송 완료 후 원래 값(0)으로 재편집. */
-function sequentialPath() {
-  const tracker = new EditTracker();
-  const el = new FakeElement();
-  let log = tracker.edit([], el, ch(el, '0px', '10px'));
-  const sent = tracker.beginSend(log);
-  log = tracker.endSend(log, sent, rebase).log;
-  expect(log).toEqual([]);
-  log = tracker.edit(log, el, ch(el, '0px', '0px', { id: 'id-new', createdAt: 'T' }));
-  return { tracker, el, log };
-}
-
-function expectSameAsSequential(during: DuringSend): { log: LocalChange[] } {
-  const c = concurrentPath(during);
-  expect(labels(c.log)).toEqual(['10px→0px']);
-  expect(c.log[0].id).toBe('id-new');
-  expect(c.compensated).toBe(1);
-  expect(visible(c.el, '0px')).toBe('0px');
-
-  const s = sequentialPath();
-  expect(c.log).toEqual(s.log);
-  expect(visible(c.el, '0px')).toBe(visible(s.el, '0px'));
-
-  // 그 항목을 되돌리면 페이지는 보낸 값(10, 인라인 important), 내역 0건.
-  const cAfter = c.tracker.revert(c.log, 'id-new');
-  const sAfter = s.tracker.revert(s.log, 'id-new');
-  expect(cAfter).toEqual([]);
-  expect(sAfter).toEqual([]);
-  expect(c.el.decls.get(P)).toEqual({ value: '10px', priority: 'important' });
-  expect(c.el.decls.get(P)).toEqual(s.el.decls.get(P));
-  return c;
-}
-
-describe('EditTracker: D-1 전송 응답 전 조작은 전송 후 같은 조작과 같은 결과', () => {
-  it('1. 응답 전 되돌리기 → "보낸 값 → 원래 값" 보정 항목', () => {
-    expectSameAsSequential((tracker, log) => tracker.revert(log, log[0].id));
+describe('EditTracker: 전송 중 잠금', () => {
+  it('L1. 보낼 항목이 있을 때만 잠그고 finishSend로 푼다', () => {
+    const tracker = new EditTracker();
+    expect(tracker.beginSend([])).toEqual([]);
+    expect(tracker.sending).toBe(false);
+    const el = new FakeElement();
+    const noSource = tracker.edit([], el, ch(el, '0px', '10px', { source: null, selectorHint: 'div' }));
+    expect(tracker.beginSend(noSource)).toEqual([]);
+    expect(tracker.sending).toBe(false);
+    const el2 = new FakeElement();
+    const log = tracker.edit(noSource, el2, ch(el2, '0px', '20px'));
+    expect(tracker.beginSend(log).map((c) => c.id)).toEqual([log[1].id]);
+    expect(tracker.sending).toBe(true);
+    tracker.finishSend();
+    expect(tracker.sending).toBe(false);
   });
 
-  it('2. 응답 전 전체 되돌리기', () => {
-    expectSameAsSequential((tracker, log) => tracker.revertAll(log));
+  for (const [name, op] of OPS) {
+    it(`L2. 잠금 중 ${name}는 거부된다: 같은 배열, 페이지 그대로`, () => {
+      const tracker = new EditTracker();
+      const el = new FakeElement();
+      const log = tracker.edit([], el, ch(el, '0px', '10px'));
+      tracker.beginSend(log);
+      expect(op(tracker, log, el)).toBe(log);
+      expect(el.decls.get(P)).toEqual({ value: '10px', priority: 'important' });
+    });
+  }
+
+  it('L3. 실패·타임아웃: 정산 없이 finishSend만 하면 내역·페이지가 그대로이고, 풀린 뒤 되돌릴 수 있다 (E-4·AC-11)', () => {
+    const tracker = new EditTracker();
+    const el = new FakeElement();
+    const log = tracker.edit([], el, ch(el, '0px', '10px'));
+    tracker.beginSend(log);
+    tracker.finishSend();
+    expect(labels(log)).toEqual(['0px→10px']);
+    expect(visible(el, '0px')).toBe('10px');
+    expect(tracker.revert(log, log[0].id)).toEqual([]);
+    expect(el.decls.size).toBe(0);
+    expect(el.hasAttribute('style')).toBe(false);
   });
 
-  it('3. 응답 전 원래 값으로 재편집 (전송 중 내역은 0건)', () => {
-    const reedit: DuringSend = (tracker, log, el) => tracker.edit(log, el, ch(el, '0px', '0px'));
-    expect(concurrentPath(reedit).during).toEqual([]);
-    expectSameAsSequential(reedit);
-  });
-
-  it('4. R-2: 10→20 전송 중 30으로 재편집 → [20→30], 되돌리면 20', () => {
+  it('L4. 성공: 보낸 항목은 빠지고 페이지는 보낸 값. 이후 편집은 보낸 값이 이전값, 되돌리면 보낸 값 (FR-9)', () => {
     const tracker = new EditTracker();
     const el = new FakeElement();
     let log = tracker.edit([], el, ch(el, '10px', '20px'));
     const sent = tracker.beginSend(log);
+    log = tracker.endSend(log, sent);
+    tracker.finishSend();
+    expect(log).toEqual([]);
+    expect(visible(el, '10px')).toBe('20px');
     log = tracker.edit(log, el, ch(el, '10px', '30px'));
-    const result = tracker.endSend(log, sent, rebase);
-    expect(labels(result.log)).toEqual(['20px→30px']);
-    expect(result.log[0].id).toBe('id-new');
-    expect(result.compensated).toBe(0);
-    expect(tracker.revert(result.log, 'id-new')).toEqual([]);
+    expect(labels(log)).toEqual(['20px→30px']);
+    expect(tracker.revert(log, log[0].id)).toEqual([]);
     expect(el.decls.get(P)).toEqual({ value: '20px', priority: 'important' });
+    tracker.restoreAll(); // 끄면 처음 상태(NFR-3)
+    expect(el.decls.size).toBe(0);
   });
 
-  it('5. 그대로 보낸 항목은 내역에서 빠지고 페이지 표시는 유지된다', () => {
+  it('L5. 잠금 중 HMR 분리는 stale로 표시되고, 성공하면 그 항목도 빠진다 (E-6·R-4)', () => {
     const tracker = new EditTracker();
     const el = new FakeElement();
-    const log = tracker.edit([], el, ch(el, '10px', '20px'));
-    const result = tracker.endSend(log, tracker.beginSend(log), rebase);
-    expect(result).toEqual({ log: [], compensated: 0 });
-    expect(visible(el, '10px')).toBe('20px');
-  });
-
-  it('6. 전송 중 되돌린 뒤 보낸 값으로 다시 편집하면 내역 0건', () => {
-    const c = concurrentPath((tracker, log, el) => tracker.edit(tracker.revert(log, log[0].id), el, ch(el, '0px', '10px')));
-    expect(c.log).toEqual([]);
-    expect(c.compensated).toBe(0);
-    expect(visible(c.el, '0px')).toBe('10px');
-  });
-
-  it('7. 전송 중 되돌린 뒤 다른 값(20) 편집 → [10→20], 전송 중 항목 id 유지, 되돌리면 10', () => {
-    let freshId = '';
-    const c = concurrentPath((tracker, log, el) => {
-      const next = tracker.edit(tracker.revert(log, log[0].id), el, ch(el, '0px', '20px'));
-      freshId = next[0].id;
-      return next;
-    });
-    expect(labels(c.log)).toEqual(['10px→20px']);
-    expect(c.log[0].id).toBe(freshId);
-    expect(c.compensated).toBe(0);
-    expect(c.tracker.revert(c.log, freshId)).toEqual([]);
-    expect(c.el.decls.get(P)).toEqual({ value: '10px', priority: 'important' });
+    let log = tracker.edit([], el, ch(el, '0px', '10px'));
+    const sent = tracker.beginSend(log);
+    el.isConnected = false;
+    log = tracker.pruneDetached(log);
+    expect(log.map((c) => c.stale)).toEqual([true]);
+    expect(tracker.endSend(log, sent)).toEqual([]);
   });
 });
 
@@ -175,89 +146,47 @@ describe('EditTracker: D-2 같은 소스, 요소마다 다른 원래 값', () =>
   });
 });
 
-describe('EditTracker: 결합·E-4', () => {
-  it('10. D-1+D-2: a(16)·b(8)를 20으로 편집 → 전송 중 되돌리기 → [20→16] 보정 1건, 되돌리면 둘 다 20', () => {
-    const tracker = new EditTracker();
-    const a = new FakeElement();
-    const b = new FakeElement();
-    let log = tracker.edit([], a, ch(a, '16px', '20px'));
-    log = tracker.edit(log, b, ch(b, '8px', '20px'));
-    const sent = tracker.beginSend(log);
-    log = tracker.revert(log, log[0].id);
-    expect(visible(a, '16px')).toBe('16px');
-    expect(visible(b, '8px')).toBe('8px');
-    const result = tracker.endSend(log, sent, rebase);
-    expect(labels(result.log)).toEqual(['20px→16px']);
-    expect(result.compensated).toBe(1);
-    expect(tracker.revert(result.log, 'id-new')).toEqual([]);
-    expect(a.decls.get(P)).toEqual({ value: '20px', priority: 'important' });
-    expect(b.decls.get(P)).toEqual({ value: '20px', priority: 'important' });
-  });
+describe('EditTracker: D-1·D-A·F-1 경로는 잠금으로 생기지 않는다', () => {
+  type Kind = 'tracked' | 'restored' | 'detached';
 
-  it('11. E-4: 전송 중 재편집한 요소가 분리된 뒤 전송이 끝나도 보내지 않은 값의 항목은 남는다', () => {
+  /** 0→10 항목 준비. el2는 지금 화면에 있는 같은 소스 요소(tracked면 편집한 요소 자신, 아니면 원래 값 0을 보이는 새 요소). */
+  function prepare(kind: Kind) {
     const tracker = new EditTracker();
+    if (kind === 'restored') {
+      return { tracker, log: restoreStale([ch(new FakeElement(), '0px', '10px')]), el2: new FakeElement() };
+    }
     const el = new FakeElement();
     let log = tracker.edit([], el, ch(el, '0px', '10px'));
-    const sent = tracker.beginSend(log);
-    log = tracker.edit(log, el, ch(el, '0px', '30px'));
-    el.isConnected = false; // HMR로 교체
-    const result = tracker.endSend(log, sent, rebase);
-    expect(labels(result.log)).toEqual(['10px→30px']);
-    expect(result.log[0].id).toBe('id-new');
-    expect(result.compensated).toBe(0);
-  });
-});
-
-describe('EditTracker: D-A 페이지 추적이 없는(stale) 항목을 보낸 뒤 응답 전 조작', () => {
-  type StaleKind = 'restored' | 'detached';
-
-  /** 0→10 stale 항목 준비 → 전송 시작 → (전송 중 조작) → 전송 성공. el2는 지금 화면에 있는(원래 값 0을 보이는) 요소. */
-  function stalePath(kind: StaleKind, during: DuringSend) {
-    const tracker = new EditTracker();
-    const el2 = new FakeElement();
-    let log: LocalChange[];
-    if (kind === 'restored') {
-      // 새로고침·재활성화: 저장소에서 복원된 항목(applier 추적 없음)
-      log = restoreStale([ch(new FakeElement(), '0px', '10px')]);
-    } else {
-      // HMR: 편집한 요소가 분리됨
-      const el = new FakeElement();
-      log = tracker.edit([], el, ch(el, '0px', '10px'));
-      el.isConnected = false;
-      log = tracker.pruneDetached(log);
-    }
-    expect(log.map((c) => c.stale)).toEqual([true]);
-    const sent = tracker.beginSend(log);
-    log = during(tracker, log, el2);
-    const result = tracker.endSend(log, sent, rebase);
-    return { tracker, el2, ...result };
+    if (kind === 'tracked') return { tracker, log, el2: el };
+    el.isConnected = false;
+    log = tracker.pruneDetached(log);
+    return { tracker, log, el2: new FakeElement() };
   }
 
-  const ops: [string, DuringSend][] = [
-    ['되돌리기', (tracker, log) => tracker.revert(log, log[0].id)],
-    ['전체 되돌리기', (tracker, log) => tracker.revertAll(log)],
-    ['원래 값 재편집', (tracker, log, el) => tracker.edit(log, el, ch(el, '0px', '0px'))],
-  ];
-
-  for (const kind of ['restored', 'detached'] as const) {
-    for (const [name, during] of ops) {
-      it(`${kind}: 응답 전 ${name} → "보낸 값 → 원래 값" 보정 1건`, () => {
-        const r = stalePath(kind, during);
-        expect(labels(r.log)).toEqual(['10px→0px']);
-        expect(r.log[0].id).toBe('id-new');
-        expect(r.compensated).toBe(1);
-        expect(visible(r.el2, '0px')).toBe('0px');
+  for (const kind of ['tracked', 'restored', 'detached'] as const) {
+    for (const [name, op] of OPS) {
+      it(`${kind}: 응답 전 ${name} 거부 → 성공 뒤 내역 0건, 보정 항목 없음`, () => {
+        const { tracker, log, el2 } = prepare(kind);
+        const page = new Map(el2.decls);
+        const sent = tracker.beginSend(log);
+        expect(op(tracker, log, el2)).toBe(log);
+        expect(el2.decls).toEqual(page);
+        expect(tracker.endSend(log, sent)).toEqual([]);
+        tracker.finishSend();
       });
     }
+  }
 
-    it(`${kind}: 그대로 보낸 stale 항목은 보정 없이 내역에서 빠진다`, () => {
-      expect(stalePath(kind, (_tracker, log) => log)).toMatchObject({ log: [], compensated: 0 });
-    });
-
-    it(`${kind}: 응답 전 되돌린 뒤 보낸 값으로 다시 편집하면 보정 없음`, () => {
-      const r = stalePath(kind, (tracker, log, el) => tracker.edit(tracker.revert(log, log[0].id), el, ch(el, '0px', '10px')));
-      expect(r.compensated).toBe(0);
-      expect(r.log.every((c) => c.after === '10px')).toBe(true);
+  for (const kind of ['restored', 'detached'] as const) {
+    it(`${kind}: 보낸 뒤 같은 소스 요소를 15px → 0px로 편집하면 내역 0건(순차 경로, F-1)`, () => {
+      const { tracker, log: l0, el2 } = prepare(kind);
+      let log = tracker.endSend(l0, tracker.beginSend(l0));
+      tracker.finishSend();
+      log = tracker.edit(log, el2, ch(el2, '0px', '15px'));
+      expect(labels(log)).toEqual(['0px→15px']);
+      log = tracker.edit(log, el2, ch(el2, '0px', '0px'));
+      expect(log).toEqual([]);
+      expect(el2.decls.size).toBe(0);
     });
   }
 });

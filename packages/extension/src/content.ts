@@ -76,10 +76,12 @@ interface Panel {
 }
 
 interface SendHandlers {
-  /** 전송할 변경 목록 스냅샷과 위치가 없어 제외된 건수. */
+  /** 전송할 변경 목록 스냅샷과 위치가 없어 제외된 건수. 1건 이상이면 응답 처리까지 편집·되돌리기를 잠근다. */
   collect(): { changes: StyleChangeInput[]; excluded: number };
-  /** 전송 성공 시 보낸 항목을 받아 정산하고(E-4·D-1), 새로 만든 "보낸 값 → 원래 값" 보정 항목 건수를 돌려준다. */
-  onSent(changes: StyleChangeInput[]): number;
+  /** 전송 성공 시 보낸 항목을 내역에서 뺀다(FR-9·E-4). */
+  onSent(changes: StyleChangeInput[]): void;
+  /** 응답 처리 끝(성공·실패·예외 공통): 잠금을 풀고 편집 필드·변경 목록을 다시 그린다. */
+  onSendEnd(): void;
 }
 
 function errorMessage(error: unknown): string {
@@ -175,15 +177,14 @@ function createPanel(handlers: SendHandlers): Panel {
     }
     const message: ContentToWorkerMessage = { type: 'domirror:send', port, changes };
     sendButton.disabled = true;
-    setStatus('info', `전송 중… (127.0.0.1:${port})`);
+    setStatus('info', `전송 중… (127.0.0.1:${port}) · 응답이 올 때까지 편집·되돌리기를 잠급니다`);
     try {
       const result = (await chrome.runtime.sendMessage(message)) as SendResult | undefined;
       if (!result) {
         setStatus('error', '전송 실패: 익스텐션 응답이 없습니다');
       } else if (result.ok) {
-        const compensated = disposed ? 0 : handlers.onSent(changes);
-        const note = compensated > 0 ? ` · 응답 전에 되돌리거나 원래 값으로 고친 ${compensated}건은 '보낸 값 → 원래 값' 항목으로 남겼습니다` : '';
-        setStatus('ok', `전송 완료: ${result.accepted}건${excludedNote}${note}`);
+        if (!disposed) handlers.onSent(changes);
+        setStatus('ok', `전송 완료: ${result.accepted}건${excludedNote}`);
       } else {
         // 실패 시 변경 내역은 그대로 둔다(E-4).
         setStatus('error', `전송 실패 (포트 ${port}): ${result.error}`);
@@ -192,7 +193,10 @@ function createPanel(handlers: SendHandlers): Panel {
       // 익스텐션 재로드 후 남은 스크립트 등(Extension context invalidated).
       setStatus('error', `전송 실패: ${errorMessage(error)}`);
     } finally {
-      if (!disposed) sendButton.disabled = false;
+      if (!disposed) {
+        sendButton.disabled = false;
+        handlers.onSendEnd();
+      }
     }
   };
   const onSendClick = (): void => void onSend();
@@ -231,7 +235,7 @@ function isStyled(el: Element): el is HTMLElement | SVGElement {
 class EditSession {
   readonly #panel: Panel;
   readonly #highlight: SelectionHighlight;
-  /** 적용 이력·전송 중 스냅숏과 내역 조정(FR-6~9). */
+  /** 적용 이력·전송 중 잠금과 내역 조정(FR-6~9). */
   readonly #tracker = new EditTracker();
   readonly #origin = location.origin;
   readonly #sync: ChangeSync;
@@ -279,14 +283,21 @@ class EditSession {
 
   collect(): { changes: StyleChangeInput[]; excluded: number } {
     const changes = this.#tracker.beginSend(this.#log);
+    // 보낼 항목이 있으면 tracker가 잠근다. 편집 필드·되돌리기 버튼을 비활성 상태로 다시 그린다.
+    if (this.#tracker.sending) this.#renderControls();
     return { changes, excluded: this.#log.length - changes.length };
   }
 
-  /** 전송 성공 정산. 반환값은 "보낸 값 → 원래 값" 보정 항목 건수(D-1). */
-  onSent(sent: StyleChangeInput[]): number {
-    const { log, compensated } = this.#tracker.endSend(this.#log, sent, { newId, now: new Date().toISOString() });
-    this.#setLog(log);
-    return compensated;
+  /** 전송 성공 정산: 보낸 항목을 내역에서 뺀다. 잠금은 onSendEnd가 푼다. */
+  onSent(sent: StyleChangeInput[]): void {
+    this.#setLog(this.#tracker.endSend(this.#log, sent));
+  }
+
+  /** 응답 처리 끝: 잠금을 풀고 다시 그린다. */
+  onSendEnd(): void {
+    this.#tracker.finishSend();
+    if (this.#disposed) return;
+    this.#renderControls();
   }
 
   dispose(): void {
@@ -298,6 +309,11 @@ class EditSession {
   }
 
   #edit(property: string, raw: string): void {
+    if (this.#tracker.sending) {
+      this.#panel.setStatus('error', '전송 중에는 편집할 수 없습니다. 응답 후 다시 입력하세요.');
+      this.#renderEditor();
+      return;
+    }
     const el = this.#selected;
     const value = raw.trim();
     if (!el) return;
@@ -334,6 +350,10 @@ class EditSession {
   }
 
   #revert(id: string): void {
+    if (this.#tracker.sending) {
+      this.#panel.setStatus('error', '전송 중에는 되돌릴 수 없습니다. 응답 후 다시 시도하세요.');
+      return;
+    }
     const next = this.#tracker.revert(this.#log, id);
     if (next === this.#log) return;
     this.#setLog(next);
@@ -341,6 +361,10 @@ class EditSession {
   }
 
   #revertAll(): void {
+    if (this.#tracker.sending) {
+      this.#panel.setStatus('error', '전송 중에는 되돌릴 수 없습니다. 응답 후 다시 시도하세요.');
+      return;
+    }
     this.#setLog(this.#tracker.revertAll(this.#log));
     this.#renderEditor();
   }
@@ -362,6 +386,11 @@ class EditSession {
     );
   }
 
+  #renderControls(): void {
+    this.#renderEditor();
+    this.#renderChanges();
+  }
+
   #renderEditor(): void {
     const el = this.#selected;
     let values: Record<string, string> | null = null;
@@ -369,14 +398,16 @@ class EditSession {
       const cs = getComputedStyle(el);
       values = Object.fromEntries(EDITABLE_PROPERTIES.map(({ name }) => [name, cs.getPropertyValue(name)]));
     }
-    renderEditor(this.#panel.editorSlot, values, { onEdit: (property, value) => this.#edit(property, value) });
+    renderEditor(this.#panel.editorSlot, values, { onEdit: (property, value) => this.#edit(property, value) }, this.#tracker.sending);
   }
 
   #renderChanges(): void {
-    renderChanges(this.#panel.changesSlot, this.#log, {
-      onRevert: (id) => this.#revert(id),
-      onRevertAll: () => this.#revertAll(),
-    });
+    renderChanges(
+      this.#panel.changesSlot,
+      this.#log,
+      { onRevert: (id) => this.#revert(id), onRevertAll: () => this.#revertAll() },
+      this.#tracker.sending,
+    );
   }
 }
 
@@ -393,6 +424,7 @@ function activate(): void {
   const currentPanel = createPanel({
     collect: () => current.collect(),
     onSent: (changes) => current.onSent(changes),
+    onSendEnd: () => current.onSendEnd(),
   });
   const current = new EditSession(currentPanel);
   panel = currentPanel;

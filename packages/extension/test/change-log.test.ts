@@ -155,73 +155,38 @@ describe('sendable', () => {
 });
 
 describe('settleSent', () => {
-  const rebase = { newId: () => 'id-new', now: '2026-11-16T00:01:00.000Z' };
-
-  it('전송 성공분만 제거하고 위치 없는 항목은 남긴다 (E-4)', () => {
+  it('보낸 항목을 빼고 위치 없는 항목은 남긴다 (E-1·E-4)', () => {
     const log = [change(), change({ id: 'id-2', source: null }), change({ id: 'id-3', property: 'color' })];
-    const sent = sendable(log);
-    const result = settleSent(log, sent, () => false, rebase);
-    expect(result.log.map((c) => c.id)).toEqual(['id-2']);
-    expect(result.compensated).toBe(0);
-  });
-
-  it('R-2 회귀: 전송 중 재편집된 항목은 보낸 값을 before로 하는 새 항목으로 남긴다(순차 경로와 같음)', () => {
-    // 10→20 전송 시작 → 응답 전 30으로 재편집 → 전송 성공
-    const log = [change({ before: { authored: '10px', computed: '10px' }, after: '20px' })];
-    const sent = sendable(log);
-    const edited = recordChange(log, change({ id: 'id-9', before: { authored: '20px', computed: '20px' }, after: '30px' }), true);
-    const concurrent = settleSent(edited, sent, () => true, rebase).log;
-    expect(concurrent).toEqual([
-      change({ id: 'id-new', before: { authored: '20px', computed: '20px' }, after: '30px', createdAt: '2026-11-16T00:01:00.000Z' }),
-    ]);
-    // 순차 경로: 전송 완료 후 재편집하면 before = 보낸 값 20
-    const sequential = recordChange(
-      settleSent(log, sent, () => false, rebase).log,
-      change({ id: 'id-new', before: { authored: '20px', computed: '20px' }, after: '30px', createdAt: '2026-11-16T00:01:00.000Z' }),
-      true,
-    );
-    expect(concurrent).toEqual(sequential);
-    // 되돌리면 내역 0건(페이지는 applier.settle로 20 복귀 — applier 테스트)
-    expect(removeChange(concurrent, 'id-new')).toEqual([]);
+    expect(settleSent(log, sendable(log)).map((c) => c.id)).toEqual(['id-2']);
   });
 
   it('전송 실패 시(호출하지 않으면) 목록은 그대로다', () => {
     const log = [change()];
-    expect(settleSent(log, [], () => true, rebase).log).toEqual(log);
+    expect(settleSent(log, [])).toEqual(log);
   });
 
-  it('D-1·D-A: 로그에서 사라진 보낸 항목은 isActive와 무관하게 "보낸 값 → 원래 값" 보정 항목을 남긴다', () => {
-    const log = [change({ before: { authored: null, computed: '0px' }, after: '10px' })];
-    const sent = sendable(log);
-    const compensation = change({ id: 'id-new', before: { authored: '10px', computed: '10px' }, after: '0px', createdAt: '2026-11-16T00:01:00.000Z' });
-    expect(settleSent([], sent, () => true, rebase)).toEqual({ log: [compensation], compensated: 1 });
-    // 페이지 추적이 없는 stale 항목(복원·HMR 분리)을 보낸 뒤 되돌린 경우(D-A)
-    expect(settleSent([], sent, () => false, rebase)).toEqual({ log: [compensation], compensated: 1 });
-  });
-
-  it('D-A: 로그에 그대로 남은 stale 항목은 isActive=false면 보정 없이 빠진다', () => {
+  it('복원(stale) 항목도 보낸 그대로면 빠진다 (E-6)', () => {
     const log = [change({ stale: true })];
-    expect(settleSent(log, sendable(log), () => false, rebase)).toEqual({ log: [], compensated: 0 });
+    expect(settleSent(log, sendable(log))).toEqual([]);
   });
 
-  it('같은 key의 전송 중 신규 항목은 id·createdAt을 유지하고 before만 보낸 값으로 바뀐다', () => {
-    const log = [change({ before: { authored: '10px', computed: '10px' }, after: '20px' })];
-    const sent = sendable(log);
-    // 전송 중 되돌림(id-1 제거) → 다른 값으로 새로 편집(id-7)
-    const fresh = change({ id: 'id-7', before: { authored: '10px', computed: '10px' }, after: '30px', createdAt: '2026-11-16T00:00:30.000Z', stale: true });
-    const result = settleSent([fresh], sent, () => true, rebase);
-    expect(result.compensated).toBe(0);
-    expect(result.log).toEqual([{ ...fresh, before: { authored: '20px', computed: '20px' }, stale: false }]);
+  it('로그에 없는 보낸 항목은 무시한다(보정 항목을 만들지 않는다)', () => {
+    expect(settleSent([], sendable([change()]))).toEqual([]);
   });
 
-  it('E-4: isActive가 false여도 after가 보낸 값과 다른 항목은 남긴다', () => {
-    const log = [change({ before: { authored: '10px', computed: '10px' }, after: '20px' })];
+  it('불러오기 병합으로 id가 바뀐 같은 key 항목은 after가 같으면 뺀다 (mergeLoaded)', () => {
+    const cur = change({ id: 'cur' });
+    const sent = sendable([cur]);
+    const { log } = mergeLoaded([change({ id: 'old', stale: true, after: '9px' })], [cur]);
+    expect(log.map((c) => c.id)).toEqual(['old']);
+    expect(settleSent(log, sent)).toEqual([]);
+  });
+
+  it('after가 보낸 값과 다른 항목은 id·before 그대로 남긴다 (E-4)', () => {
+    const log = [change()];
     const sent = sendable(log);
     const edited = [{ ...log[0], after: '30px' }];
-    const result = settleSent(edited, sent, () => false, rebase);
-    expect(result.log).toEqual([
-      change({ id: 'id-new', before: { authored: '20px', computed: '20px' }, after: '30px', createdAt: '2026-11-16T00:01:00.000Z' }),
-    ]);
+    expect(settleSent(edited, sent)).toEqual(edited);
   });
 });
 

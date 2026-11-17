@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.10] - 2026-11-17
+
+### Changed
+
+- refactor: INT-001 전송 중 편집·되돌리기 잠금으로 전송 대기 경계 결함 구조적 제거
+
 ## [0.1.9] - 2026-11-16
 
 ### Fixed

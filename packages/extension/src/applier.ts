@@ -110,35 +110,12 @@ export class AppliedStyles {
     for (const [el, state] of record.elements) restoreStyle(el, record.property, state.prev, this.#restoreOptions(el));
   }
 
-  /** 항목에 속한 요소별 현재 인라인 값(전송 시점 스냅숏). */
-  snapshot(key: string): Map<StyledElement, PrevInline> {
-    const out = new Map<StyledElement, PrevInline>();
-    const record = this.#byKey.get(key);
-    if (!record) return out;
-    for (const el of record.elements.keys()) {
-      out.set(el, { value: el.style.getPropertyValue(record.property), priority: el.style.getPropertyPriority(record.property) });
-    }
-    return out;
-  }
-
   /**
-   * 전송 성공(D-1·R-2): 스냅숏 요소 중 지금 인라인이 스냅숏과 다르면 보낸 시점 값을 원복 기준으로, 보낸 값을 원래 값으로 (다시) 추적한다.
-   * 스냅숏 그대로이거나 분리된 요소는 추적에서 뺀다. 스냅숏에 없는 요소(전송 중 새로 편집)는 그대로 둔다.
-   * 반환값: key에 추적 중인 요소가 남아 있는지.
+   * 전송 성공(FR-9): 보낸 항목의 요소 추적을 끝낸다. 페이지 표시(인라인 값)는 보낸 값 그대로 두고,
+   * 끌 때 원복(restoreAll)용 최초 값은 유지한다. 추적 중이 아니면 아무것도 하지 않는다.
    */
-  settle(key: string, property: string, snapshot: ReadonlyMap<StyledElement, PrevInline>, sentValue: string): boolean {
-    const record = this.#byKey.get(key) ?? { property, elements: new Map<StyledElement, ElementState>() };
-    for (const [el, snap] of snapshot) {
-      const same = el.style.getPropertyValue(property) === snap.value && el.style.getPropertyPriority(property) === snap.priority;
-      if (!el.isConnected || same) record.elements.delete(el);
-      else record.elements.set(el, { prev: snap, original: sentValue.trim() });
-    }
-    if (record.elements.size === 0) {
-      this.#byKey.delete(key);
-      return false;
-    }
-    this.#byKey.set(key, record);
-    return true;
+  forget(key: string): void {
+    this.#byKey.delete(key);
   }
 
   /**

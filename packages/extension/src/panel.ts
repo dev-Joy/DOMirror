@@ -86,6 +86,7 @@ export const EDITOR_CSS = `
 .changes .warn { color: #9a6700; font-size: 11px; }
 .changes .muted { color: #59636e; }
 .changes button { font: inherit; font-size: 12px; cursor: pointer; }
+.editor input:disabled, .changes button:disabled { cursor: progress; }
 .selected-outline {
   position: fixed;
   box-sizing: border-box;
@@ -101,8 +102,13 @@ export interface EditorHandlers {
   onEdit(property: string, value: string): void;
 }
 
-/** 선택 요소의 편집 필드를 그린다. `values`는 속성별 현재 값(계산값). null이면 선택 없음. */
-export function renderEditor(container: HTMLElement, values: Readonly<Record<string, string>> | null, handlers: EditorHandlers): void {
+/** 선택 요소의 편집 필드를 그린다. `values`는 속성별 현재 값(계산값). null이면 선택 없음. `disabled`면 전송 중 잠금으로 입력 필드를 비활성화한다. */
+export function renderEditor(
+  container: HTMLElement,
+  values: Readonly<Record<string, string>> | null,
+  handlers: EditorHandlers,
+  disabled = false,
+): void {
   if (!values) {
     container.replaceChildren();
     return;
@@ -126,6 +132,7 @@ export function renderEditor(container: HTMLElement, values: Readonly<Record<str
     input.dataset.property = name;
     input.value = values[name] ?? '';
     input.spellcheck = false;
+    input.disabled = disabled;
     input.addEventListener('change', () => handlers.onEdit(name, input.value));
     label.append(input);
     grid.append(label);
@@ -138,16 +145,22 @@ export interface ChangesHandlers {
   onRevertAll(): void;
 }
 
-function button(text: string, onClick: () => void): HTMLButtonElement {
+function button(text: string, onClick: () => void, disabled = false): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.textContent = text;
+  b.disabled = disabled;
   b.addEventListener('click', onClick);
   return b;
 }
 
-/** 변경 목록(개별·전체 되돌리기). 비어 있으면 영역을 비운다. */
-export function renderChanges(container: HTMLElement, log: readonly LocalChange[], handlers: ChangesHandlers): void {
+/** 변경 목록(개별·전체 되돌리기). 비어 있으면 영역을 비운다. `disabled`면 전송 중 잠금으로 되돌리기 버튼을 비활성화한다. */
+export function renderChanges(
+  container: HTMLElement,
+  log: readonly LocalChange[],
+  handlers: ChangesHandlers,
+  disabled = false,
+): void {
   if (log.length === 0) {
     container.replaceChildren();
     return;
@@ -157,7 +170,7 @@ export function renderChanges(container: HTMLElement, log: readonly LocalChange[
 
   const head = document.createElement('p');
   head.className = 'head';
-  head.append(`변경 내역 ${log.length}건`, button('전체 되돌리기', () => handlers.onRevertAll()));
+  head.append(`변경 내역 ${log.length}건`, button('전체 되돌리기', () => handlers.onRevertAll(), disabled));
 
   const list = document.createElement('ul');
   for (const c of log) {
@@ -173,7 +186,7 @@ export function renderChanges(container: HTMLElement, log: readonly LocalChange[
     if (originalValue(c) === c.after.trim()) body.append(line('muted', '같은 소스의 다른 요소는 원래 값과 다르게 편집되어 있음'));
     body.append(line('muted', c.selectorHint));
     if (c.stale) body.append(line('warn', '페이지 표시가 사라졌을 수 있음(새로고침·HMR·재활성화로 요소가 바뀜)'));
-    item.append(body, button('되돌리기', () => handlers.onRevert(c.id)));
+    item.append(body, button('되돌리기', () => handlers.onRevert(c.id), disabled));
     list.append(item);
   }
   box.append(head, list);
