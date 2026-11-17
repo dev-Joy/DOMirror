@@ -229,8 +229,8 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 
 | status | 조건 | 처리 |
 | :--- | :--- | :--- |
-| `match` | 같은 소스의 모든 요소(`count`개) 계산값이 `expected`와 같음 | 그 id만 `mark_changes_applied`로 표시 |
-| `mismatch` | 하나라도 다름(정규화 후 비교) | 표시하지 않고 `expected`·`actual`과 함께 보고 |
+| `match` | 같은 소스의 모든 요소(`count`개) 계산값이 각 요소 기준 정규화 기대값과 같음(`expected`는 첫 요소 기준 값) | 그 id만 `mark_changes_applied`로 표시 |
+| `mismatch` | 하나라도 다름(요소별 정규화 후 비교). 보고되는 `expected`는 첫 요소 기준 값 | 표시하지 않고 `expected`·`actual`과 함께 보고 |
 | `unverifiable` | `inherited: true`, 요소 0개, `after` 해석 불가, 계산값이 빈 문자열 | 표시하지 않고 `reason`과 함께 보고 |
 
 `:hover` 같은 상태 의존 값이나 로그인·앱 상태가 필요한 페이지는 임시 프로필에서 재현되지 않아 `mismatch`·`unverifiable`이 될 수 있습니다. 이때도 보고만 하고 표시하지 않습니다.

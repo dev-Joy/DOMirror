@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.14] - 2026-11-17
+
+### Fixed
+
+- README 검증 스니펫 판정 표: match·mismatch 조건을 요소별 정규화 기대값 비교와 일치하도록 정정
+
 ## [0.1.13] - 2026-11-17
 
 ### Added
