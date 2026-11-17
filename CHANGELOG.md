@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.13] - 2026-11-17
+
+### Added
+
+- README: chrome-devtools-mcp 병행 등록·검증 프롬프트 예·검증 스니펫(일치 항목만 반영 완료 표시)
+- README: chrome-devtools-mcp 보안 주의 3항목, 자동 확인 수동 체크리스트 1건
+
+### Changed
+
+- README 사용법 8단계에 에이전트 보고로 확인하는 경로 병기
+
 ## [0.1.12] - 2026-11-17
 
 ### Added

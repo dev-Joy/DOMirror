@@ -151,6 +151,92 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 프로젝트의 스타일 방식(CSS 파일·Tailwind 등)을 따르고, 반영한 id들은 mark_changes_applied로 표시해 줘.
 ```
 
+### 반영 결과 자동 확인 (선택: chrome-devtools-mcp)
+
+[chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)를 함께 등록하면, 에이전트가 소스를 고친 뒤 실제 화면의 계산값을 `after`와 비교해 **일치한 항목만** 반영 완료로 표시할 수 있습니다. 등록하지 않으면 기존처럼 새로고침으로 확인합니다.
+
+```sh
+claude mcp add chrome-devtools -- npx -y chrome-devtools-mcp@latest --isolated --no-usage-statistics --no-performance-crux
+```
+
+| 플래그 | 이유 |
+| :--- | :--- |
+| `--isolated` | 임시 프로필로 브라우저를 띄우고 종료 시 삭제합니다. 평소 쓰는 프로필(쿠키·로그인)과 DOMirror 익스텐션이 섞이지 않습니다. |
+| `--no-usage-statistics` | 기본으로 켜져 있는 Google 사용 통계 전송을 끕니다. |
+| `--no-performance-crux` | 성능 도구가 페이지 URL을 Google CrUX API로 보내는 동작을 끕니다. |
+
+MCP 지원 에이전트면 동일합니다. JSON 설정을 쓰는 에이전트는 `"command": "npx"`, `"args": ["-y", "chrome-devtools-mcp@latest", "--isolated", "--no-usage-statistics", "--no-performance-crux"]`로 등록합니다.
+
+**별도 브라우저에서 비교하는 이유**: 익스텐션으로 편집한 탭에는 보낸 값이 요소의 인라인 `!important`로 남습니다(전송 성공 후에도 유지). 그 탭에서 비교하면 소스 반영에 실패해도 일치로 보입니다. 그래서 chrome-devtools-mcp가 띄운 별도 브라우저(DOMirror 익스텐션 없음)에서 `pageUrl`을 새로 열어 비교합니다.
+
+사용 도구: `new_page`(`pageUrl` 열기), `navigate_page`(`type: "reload"`로 다시 불러오기), `wait_for`(페이지 문구가 나타날 때까지 대기), `evaluate_script`(검증 스니펫 실행), `take_screenshot`(필요 시 보고용 화면).
+
+자동 확인을 포함한 프롬프트 예:
+
+```text
+domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 소스에 반영해 줘.
+각 항목의 source(file:line:column) 위치 요소에 property를 after 값으로 바꾸되,
+그 줄이 selectorHint·before.authored와 맞는지 먼저 확인하고 다르면 반영하지 말고 알려줘.
+프로젝트의 스타일 방식(CSS 파일·Tailwind 등)을 따라 줘.
+파일을 저장한 뒤 chrome-devtools MCP로 확인해 줘.
+- pageUrl을 new_page로 열고(이미 열었으면 navigate_page로 다시 불러오기) wait_for로 로딩을 기다려.
+- 항목마다 DOMirror README의 검증 스니펫에 source·inherited·property·after를 넣어 evaluate_script로 실행해.
+- status가 match인 id만 mark_changes_applied로 표시해.
+- 불일치·검증 불가는 표시하지 않고 보고해 줘(id·expected·actual·reason 포함). 그 항목은 대기 상태로 남겨.
+- mismatch면 HMR·저장 지연일 수 있으니 다시 불러온 뒤 1회만 재확인해.
+```
+
+검증 스니펫(`evaluate_script`의 `function`에 그대로 넣고, 맨 위 4개 상수만 항목 값으로 바꿉니다. `evaluate_script`의 `args`는 요소 uid만 받으므로 값은 상수로 넣습니다):
+
+```js
+() => {
+  const SOURCE = 'src/App.tsx:10:7'; // StyleChange.source의 file:line:column
+  const INHERITED = false; // StyleChange.source.inherited
+  const PROPERTY = 'color'; // StyleChange.property
+  const AFTER = '#fff'; // StyleChange.after
+
+  const result = (status, expected, actual, reason) =>
+    reason ? { status, expected, actual, count: actual.length, reason } : { status, expected, actual, count: actual.length };
+
+  if (INHERITED) return result('unverifiable', '', [], '조상 위치(inherited) 항목이라 요소를 특정할 수 없음');
+
+  const els = [...document.querySelectorAll(`[data-domirror="${CSS.escape(SOURCE)}"]`)];
+  if (els.length === 0) return result('unverifiable', '', [], '요소 0개: 주입을 켠 dev 서버(DOMIRROR=1)와 source 확인 필요');
+
+  // after를 같은 부모 아래 임시 요소에 적용해 브라우저 정규화 값을 구한다(#fff → rgb(255, 255, 255), 1rem → 16px).
+  const normalize = (el) => {
+    const tmp = document.createElement(el.tagName);
+    const cls = el.getAttribute('class');
+    if (cls) tmp.setAttribute('class', cls);
+    tmp.style.setProperty(PROPERTY, AFTER, 'important');
+    if (tmp.style.getPropertyValue(PROPERTY) === '') return null;
+    (el.parentElement ?? document.body).appendChild(tmp);
+    const value = getComputedStyle(tmp).getPropertyValue(PROPERTY).trim();
+    tmp.remove();
+    return value;
+  };
+
+  const expectedList = els.map(normalize);
+  if (expectedList.some((v) => v === null)) return result('unverifiable', '', [], `after 값을 브라우저가 해석하지 못함: ${PROPERTY}: ${AFTER}`);
+  const actual = els.map((el) => getComputedStyle(el).getPropertyValue(PROPERTY).trim());
+  const expected = expectedList[0];
+  if (expected === '' || actual.some((v) => v === '')) return result('unverifiable', expected, actual, `계산값이 빈 문자열(shorthand 등): ${PROPERTY}`);
+  return actual.every((v, i) => v === expectedList[i]) ? result('match', expected, actual) : result('mismatch', expected, actual);
+}
+```
+
+출력: `{ status: 'match' | 'mismatch' | 'unverifiable', expected: string, actual: string[], count: number, reason?: string }`
+
+| status | 조건 | 처리 |
+| :--- | :--- | :--- |
+| `match` | 같은 소스의 모든 요소(`count`개) 계산값이 `expected`와 같음 | 그 id만 `mark_changes_applied`로 표시 |
+| `mismatch` | 하나라도 다름(정규화 후 비교) | 표시하지 않고 `expected`·`actual`과 함께 보고 |
+| `unverifiable` | `inherited: true`, 요소 0개, `after` 해석 불가, 계산값이 빈 문자열 | 표시하지 않고 `reason`과 함께 보고 |
+
+`:hover` 같은 상태 의존 값이나 로그인·앱 상태가 필요한 페이지는 임시 프로필에서 재현되지 않아 `mismatch`·`unverifiable`이 될 수 있습니다. 이때도 보고만 하고 표시하지 않습니다.
+
+확인 기준: 2026-11-17, chrome-devtools-mcp 1.13.0 README·`docs/tool-reference.md`·`docs/configuration.md`. 버전에 따라 도구명·플래그가 바뀔 수 있습니다.
+
 ## 사용법
 
 1. 대상 앱을 주입을 켠 상태로 띄웁니다(예: `pnpm --filter example-react-vite dev`).
@@ -160,7 +246,7 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 5. 패널에서 색·간격·크기·글꼴 속성을 편집합니다. 변경은 즉시 화면에 적용되고 "변경 내역"에 쌓입니다(개별·전체 되돌리기 가능).
 6. 포트를 확인하고 **에이전트에 보내기**를 누릅니다. 응답이 올 때까지 편집·되돌리기가 잠깁니다. 성공하면 보낸 항목이 변경 내역에서 빠지고, 실패하면 내역이 유지되고 패널에 사유와 포트가 표시됩니다.
 7. 에이전트에게 반영을 지시합니다(위 프롬프트 예). 에이전트는 반영 후 `mark_changes_applied`를 호출합니다.
-8. 페이지를 새로고침해 소스 반영 결과를 확인합니다.
+8. 페이지를 새로고침해 소스 반영 결과를 확인합니다. chrome-devtools-mcp를 등록했다면 에이전트 보고(일치·불일치·검증 불가)로 확인할 수 있어 새로고침을 생략해도 됩니다.
 
 간격 보기: 패널의 **간격 보기**를 켜면 마우스를 올린 요소의 크기·padding 영역·gap이 표시됩니다. **Alt(macOS는 Option)+클릭**으로 기준 요소를 고정/해제하면, 이후 마우스를 올린 요소까지의 수평·수직 거리가 표시됩니다.
 
@@ -176,6 +262,10 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
   켠 프로덕션 빌드는 스테이징·로컬 preview 확인용입니다. **운영 배포물에는 사용하지 마세요**(주입 기본값은 꺼짐).
 - **경로 노출**: 위치 값은 Vite 루트 기준 상대 경로(`src/App.tsx:12:5`)이며 절대 경로·홈 경로는 들어가지 않습니다.
 - **보관**: 변경 내역은 서버 메모리에만 있습니다. 서버를 재시작하면 대기 중인 내역은 사라집니다.
+- **chrome-devtools-mcp(선택)**:
+  - 띄운 브라우저의 페이지 내용·쿠키·네트워크 정보가 에이전트에 노출됩니다. 민감한 계정으로 로그인한 페이지에서는 쓰지 마세요.
+  - `--browser-url`·`--autoConnect`로 평소 쓰는 Chrome에 붙이지 마세요. 디버깅 포트를 열면 같은 컴퓨터의 다른 프로그램도 그 브라우저를 조작할 수 있고, 익스텐션이 남긴 인라인 값 때문에 비교 결과도 틀어집니다.
+  - Google 사용 통계와 CrUX 전송은 기본으로 켜져 있습니다. `--no-usage-statistics`·`--no-performance-crux`로 끄세요.
 
 ## 알려진 한계
 
@@ -202,6 +292,7 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 - [ ] 정식 Chrome에서 `127.0.0.1` 서버로 전송할 때 로컬 네트워크 접근 권한 프롬프트가 뜨는지(뜨면 허용 후 전송 성공 여부).
 - [ ] macOS 실제 Option 키 + 클릭으로 간격 보기 기준 요소가 고정/해제된다.
 - [ ] 종단(AC-8): Claude Code에 서버 등록 → React·Vue 예제 각각에서 편집·전송 → 에이전트가 소스 수정 → 새로고침 후 같은 변경이 보인다.
+- [ ] 종단(자동 확인): chrome-devtools-mcp를 함께 등록한 상태에서 에이전트가 일치 항목만 반영 완료로 표시하고 불일치 항목을 보고한다.
 
 ## 개발
 
