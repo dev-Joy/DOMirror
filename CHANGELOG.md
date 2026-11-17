@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.25] - 2026-11-17
+
+### Added
+
+- Vue 주입기가 네이티브 요소에 파일 basename 기준 `data-domirror-component`·`data-domirror-ds`를 주입
+- SFC script·scriptSetup 정적 import를 파싱해 DS 패턴 컴포넌트 태그에 사용처 측 속성 주입(파싱 실패 시 정의 측만 유지)
+
 ## [0.1.24] - 2026-11-17
 
 ### Added
