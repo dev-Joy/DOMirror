@@ -2,6 +2,16 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.39] - 2026-11-17
+
+### Added
+
+- README에 MCP `list_comments`·`mark_comments_resolved`와 `ScreenComment` 필드, 코멘트 사용법(핀·상태·재전송·복원) 안내, 코멘트 수동 확인 체크리스트 추가
+
+### Changed
+
+- 보안·운영 "보관" 항목에 코멘트 메모리 보관·재시작 소실·외부 전송 없음 명시, 여러 탭 항목에 코멘트 저장 특성 추가
+
 ## [0.1.38] - 2026-11-17
 
 ### Added
