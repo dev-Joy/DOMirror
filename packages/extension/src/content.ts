@@ -545,6 +545,8 @@ class EditSession {
     const next = this.#tracker.edit(this.#log, el, change);
     this.#panel.setStatus('info', `${property}: ${value} 적용`);
     this.#setLog(next);
+    // display는 레이아웃 필드 구성을 바꾸므로 편집기를 다시 그린다(FR-6·FR-8).
+    if (property === 'display') this.#renderEditor();
   }
 
   #revert(id: string): void {
