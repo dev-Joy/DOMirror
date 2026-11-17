@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { DEFAULT_PORT, MCP_PATH } from '@domirror/shared';
+import { CommentStore } from './comment-store.js';
 import { createHttpServer } from './http.js';
 import { ChangeStore } from './store.js';
 
@@ -34,7 +35,7 @@ const portArg = values.port ?? process.env.DOMIRROR_PORT;
 const port = portArg === undefined || portArg === '' ? DEFAULT_PORT : parsePort(portArg);
 const extensionId = values['extension-id'] || undefined;
 
-const server = createHttpServer({ store: new ChangeStore(), extensionId });
+const server = createHttpServer({ store: new ChangeStore(), commentStore: new CommentStore(), extensionId });
 
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {

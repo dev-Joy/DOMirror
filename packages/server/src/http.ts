@@ -1,10 +1,19 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { CHANGES_PATH, HEALTH_PATH, MCP_PATH, type HealthResponse, type PostChangesResponse } from '@domirror/shared';
+import {
+  CHANGES_PATH,
+  COMMENTS_PATH,
+  HEALTH_PATH,
+  MCP_PATH,
+  type HealthResponse,
+  type PostChangesResponse,
+  type PostCommentsResponse,
+} from '@domirror/shared';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { localhostHostValidation, toNodeHandler } from '@modelcontextprotocol/node';
+import type { CommentStore } from './comment-store.js';
 import { createMcpFactory, SERVER_NAME, SERVER_VERSION } from './mcp.js';
 import { isOriginAllowed } from './origin.js';
-import { PostChangesRequestSchema } from './schema.js';
+import { PostChangesRequestSchema, PostCommentsRequestSchema } from './schema.js';
 import type { ChangeStore } from './store.js';
 
 /** `POST /changes`·`/mcp` 공통 본문 상한. */
@@ -65,19 +74,21 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-async function handlePostChanges(req: IncomingMessage, res: ServerResponse, store: ChangeStore): Promise<void> {
+async function readJson(req: IncomingMessage): Promise<unknown> {
   if (!isJsonContentType(req.headers['content-type'])) {
     throw new HttpError(415, 'Content-Type must be application/json');
   }
   const text = await readBody(req);
 
-  let json: unknown;
   try {
-    json = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
     throw new HttpError(400, 'Invalid JSON');
   }
-  const parsed = PostChangesRequestSchema.safeParse(json);
+}
+
+async function handlePostChanges(req: IncomingMessage, res: ServerResponse, store: ChangeStore): Promise<void> {
+  const parsed = PostChangesRequestSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     sendJson(res, 400, { error: 'Invalid request body', issues: parsed.error.issues });
     return;
@@ -87,9 +98,30 @@ async function handlePostChanges(req: IncomingMessage, res: ServerResponse, stor
   sendJson(res, 200, { accepted: ids.length, ids } satisfies PostChangesResponse);
 }
 
+async function handlePostComments(req: IncomingMessage, res: ServerResponse, store: CommentStore): Promise<void> {
+  const parsed = PostCommentsRequestSchema.safeParse(await readJson(req));
+  if (!parsed.success) {
+    sendJson(res, 400, { error: 'Invalid request body', issues: parsed.error.issues });
+    return;
+  }
+
+  const ids = store.upsert(parsed.data.comments);
+  sendJson(res, 200, { accepted: ids.length, ids } satisfies PostCommentsResponse);
+}
+
+/** 라우트 핸들러 공통 예외 응답(`/changes`·`/comments` 동일 문구). */
+function respondError(res: ServerResponse, error: unknown): void {
+  if (res.headersSent) return;
+  if (error instanceof HttpError) {
+    sendJson(res, error.status, { error: error.message });
+  } else {
+    sendJson(res, 500, { error: 'Internal server error' });
+  }
+}
+
 /** 바인딩은 호출 측(`listen(port, '127.0.0.1')`) 책임이다. */
-export function createHttpServer(opts: { store: ChangeStore; extensionId?: string }): Server {
-  const { store, extensionId } = opts;
+export function createHttpServer(opts: { store: ChangeStore; commentStore: CommentStore; extensionId?: string }): Server {
+  const { store, commentStore, extensionId } = opts;
   const validateHost = localhostHostValidation();
   const mcpHandler = createMcpHandler(createMcpFactory(store));
   const mcpNodeHandler = toNodeHandler(mcpHandler, { maxRequestBodySize: MAX_BODY_BYTES });
@@ -113,14 +145,12 @@ export function createHttpServer(opts: { store: ChangeStore; extensionId?: strin
       return;
     }
     if (pathname === CHANGES_PATH && req.method === 'POST') {
-      handlePostChanges(req, res, store).catch((error: unknown) => {
-        if (res.headersSent) return;
-        if (error instanceof HttpError) {
-          sendJson(res, error.status, { error: error.message });
-        } else {
-          sendJson(res, 500, { error: 'Internal server error' });
-        }
-      });
+      handlePostChanges(req, res, store).catch((error: unknown) => respondError(res, error));
+      return;
+    }
+    // MCP는 다음 단계다. `commentStore`는 이 라우트에서만 쓰인다.
+    if (pathname === COMMENTS_PATH && req.method === 'POST') {
+      handlePostComments(req, res, commentStore).catch((error: unknown) => respondError(res, error));
       return;
     }
     sendJson(res, 404, { error: 'Not found' });

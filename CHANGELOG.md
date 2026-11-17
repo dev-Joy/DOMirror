@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.35] - 2026-11-17
+
+### Added
+
+- 서버 `POST /comments` 라우트와 `ScreenComment` zod 스키마(본문 2,000자·문자열 2,048자 상한), `createHttpServer` 코멘트 저장소 주입
+- `/comments` 403·400·413·415 처리와 기존 `/health` pending 불변 통합 테스트
+
+### Changed
+
+- HTTP 요청 본문 읽기·오류 응답 헬퍼를 공통화(기존 `/changes` 문구·처리 순서 유지)
+
 ## [0.1.34] - 2026-11-17
 
 ### Added
