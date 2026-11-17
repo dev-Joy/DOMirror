@@ -16,7 +16,7 @@ import { createMeasureOverlay, MEASURE_CSS, type MeasureOverlay } from './overla
 import { createPicker, PICKER_CSS, type BlockedReason, type Picker } from './picker.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
-import { countSameSource, locate, selectorHint } from './source-locator.js';
+import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
 import { loadEntries, loadPort, saveEntries, savePort } from './storage.js';
 
 // 진입점: 아이콘 클릭으로 주입되면 즉시 활성화되고, 이후 'domirror:toggle' 메시지로 켜고 끈다.
@@ -269,8 +269,9 @@ class EditSession {
     this.#selected = el;
     this.#highlight.set(el);
     const located = locate(el);
+    const component = locateComponent(el);
     const sameSource = located ? countSameSource(formatSourceLocation(located.location)) : 0;
-    renderLocation(this.#panel.locationSlot, { kind: 'selected', hint: selectorHint(el), located, sameSource });
+    renderLocation(this.#panel.locationSlot, { kind: 'selected', hint: selectorHint(el), located, sameSource, component });
     this.#renderEditor();
   }
 

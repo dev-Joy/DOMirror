@@ -1,4 +1,12 @@
-import { DOMIRROR_ATTR, parseSourceLocation, type SourceLocation } from '@domirror/shared';
+import {
+  DOMIRROR_ATTR,
+  DOMIRROR_COMPONENT_ATTR,
+  DOMIRROR_DS_ATTR,
+  parseComponentInfo,
+  parseSourceLocation,
+  type ComponentInfo,
+  type SourceLocation,
+} from '@domirror/shared';
 
 /**
  * 위치 탐색에 필요한 최소 요소 인터페이스. 실제 `Element`가 구조적으로 만족하며,
@@ -17,7 +25,13 @@ export interface Located {
   inherited: boolean;
 }
 
+export interface LocatedComponent extends ComponentInfo {
+  /** 디자인 시스템 컴포넌트면 true (FR-7). */
+  designSystem: boolean;
+}
+
 const ATTR_SELECTOR = `[${DOMIRROR_ATTR}]`;
+const COMPONENT_SELECTOR = `[${DOMIRROR_COMPONENT_ATTR}]`;
 const HINT_MAX_CLASSES = 3;
 
 /**
@@ -30,6 +44,20 @@ export function locate(el: LocatableElement): Located | null {
     const location = parseSourceLocation(current.getAttribute(DOMIRROR_ATTR) ?? '');
     if (location) return { location, inherited: current !== el };
     current = current.parentElement?.closest(ATTR_SELECTOR) ?? null;
+  }
+  return null;
+}
+
+/**
+ * 요소 자신 → 가장 가까운 조상 순으로 `data-domirror-component` 값을 찾는다.
+ * 값이 깨진 요소는 건너뛰고 더 위로 올라가며, 끝까지 없으면 `null`(라벨 숨김·컴포넌트 정보 없음, E-9).
+ */
+export function locateComponent(el: LocatableElement): LocatedComponent | null {
+  let current = el.closest(COMPONENT_SELECTOR);
+  while (current) {
+    const info = parseComponentInfo(current.getAttribute(DOMIRROR_COMPONENT_ATTR) ?? '');
+    if (info) return { ...info, designSystem: current.getAttribute(DOMIRROR_DS_ATTR) !== null };
+    current = current.parentElement?.closest(COMPONENT_SELECTOR) ?? null;
   }
   return null;
 }

@@ -2,7 +2,7 @@ import { formatSourceLocation } from '@domirror/shared';
 import { originalValue, type LocalChange } from './change-log.js';
 import type { BlockedReason } from './picker.js';
 import { EDITABLE_PROPERTIES, PROPERTY_GROUP_LABELS, type PropertyGroup } from './properties.js';
-import type { Located } from './source-locator.js';
+import type { Located, LocatedComponent } from './source-locator.js';
 
 // 패널의 위치 표시(FR-5)·편집 필드(FR-6)·변경 목록(FR-7·8) 영역과 선택 요소 강조.
 // 패널 셸(포트·전송·상태)은 content.ts에 있다.
@@ -10,7 +10,14 @@ import type { Located } from './source-locator.js';
 export type LocationView =
   | { kind: 'idle' }
   | { kind: 'blocked'; reason: BlockedReason }
-  | { kind: 'selected'; hint: string; located: Located | null; sameSource: number };
+  | {
+      kind: 'selected';
+      hint: string;
+      located: Located | null;
+      sameSource: number;
+      /** 컴포넌트 정보(있으면 이름·정의 위치·DS 여부를 함께 표시, FR-9·E-9). */
+      component?: LocatedComponent | null;
+    };
 
 export const LOCATION_CSS = `
 .loc { margin: 0 0 8px; }
@@ -27,6 +34,8 @@ export const LOCATION_CSS = `
 }
 .loc .muted { color: #59636e; }
 .loc .warn { color: #9a6700; }
+.loc .component { font-weight: 600; }
+.loc .badge.ds { background: #1a7f37; color: #ffffff; }
 `;
 
 const BLOCKED_TEXT: Record<BlockedReason, string> = {
@@ -39,6 +48,20 @@ function line(className: string, text: string): HTMLParagraphElement {
   p.className = className;
   p.textContent = text;
   return p;
+}
+
+/** 컴포넌트 줄(이름 + DS 배지, 정의 위치). 정보가 없으면 흐린 안내 1줄(E-9). */
+function componentLines(component: LocatedComponent | null | undefined): HTMLParagraphElement[] {
+  if (!component) return [line('muted', '컴포넌트 정보 없음')];
+
+  const name = line('component', `컴포넌트: ${component.name}`);
+  if (component.designSystem) {
+    const badge = document.createElement('span');
+    badge.className = 'badge ds';
+    badge.textContent = 'DS';
+    name.append(badge);
+  }
+  return [name, line('muted', `정의: ${component.source}`)];
 }
 
 /** 위치 표시 영역을 `view` 상태로 다시 그린다. */
@@ -59,9 +82,12 @@ export function renderLocation(container: HTMLElement, view: LocationView): void
       path.append(badge);
     }
     box.append(path);
+    box.append(...componentLines(view.component));
     if (view.sameSource >= 2) box.append(line('muted', `같은 소스에서 나온 요소 ${view.sameSource}개`));
     box.append(line('muted', view.hint));
   } else {
+    // 소스 위치가 없어도 컴포넌트 정보가 있으면 먼저 보여 주고 기존 경고를 이어 붙인다(FR-9).
+    if (view.component) box.append(...componentLines(view.component));
     box.append(line('warn', '소스 위치 없음: 이 요소와 조상에 위치 속성이 없어 전송 대상에서 제외됩니다.'));
     box.append(line('muted', view.hint));
   }

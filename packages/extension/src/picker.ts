@@ -1,5 +1,8 @@
 // 요소 선택: 캡처 단계에서 페이지 클릭을 가로채 선택으로 바꾸고, hover 중인 요소에 윤곽선을 그린다.
 // 윤곽선은 패널 Shadow DOM 안에 그려 대상 페이지 요소에는 아무 속성도 쓰지 않는다(NFR-3).
+// 윤곽선 위(공간이 없으면 아래)에는 컴포넌트 이름 라벨을 붙인다(FR-8).
+
+import { locateComponent } from './source-locator.js';
 
 export type BlockedReason = 'shadow-dom' | 'iframe';
 
@@ -33,6 +36,19 @@ export const PICKER_CSS = `
   border: 2px dashed #cf222e;
   background: rgb(207 34 46 / 0.08);
 }
+.pick-label {
+  position: fixed;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #57606a;
+  color: #fff;
+  font: 11px/1.4 system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2147483647;
+}
+.pick-label.ds { background: #1a7f37; }
+.pick-label[hidden] { display: none; }
 `;
 
 /** 페이지 동작(링크 이동·버튼 핸들러·포커스)을 막기 위해 함께 가로채는 이벤트. 선택은 click에서만 한다. */
@@ -53,13 +69,31 @@ function blockedReason(event: Event, target: Element): BlockedReason | null {
 export function createPicker(onPick: (el: Element) => void, options: PickerOptions): Picker {
   const { overlayRoot, isOwn, onBlocked, onAltPick } = options;
   let outline: HTMLDivElement | null = null;
+  let label: HTMLDivElement | null = null;
   let hovered: Element | null = null;
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** 윤곽선 위(공간이 없으면 아래)에 컴포넌트 이름 라벨을 붙인다. 정보가 없으면 숨긴다(E-9). */
+  const drawLabel = (el: Element, rect: DOMRect): void => {
+    if (!label) return;
+    const component = locateComponent(el);
+    if (!component) {
+      label.hidden = true;
+      return;
+    }
+    label.textContent = component.designSystem ? `${component.name} · DS` : component.name;
+    label.classList.toggle('ds', component.designSystem);
+    label.hidden = false;
+    const h = label.offsetHeight || 17;
+    label.style.left = `${Math.max(0, rect.left)}px`;
+    label.style.top = rect.top >= h + 4 ? `${rect.top - h - 2}px` : `${rect.top + rect.height + 2}px`;
+  };
 
   const draw = (): void => {
     if (!outline) return;
     if (!hovered || !hovered.isConnected) {
       outline.hidden = true;
+      if (label) label.hidden = true;
       return;
     }
     const rect = hovered.getBoundingClientRect();
@@ -70,6 +104,7 @@ export function createPicker(onPick: (el: Element) => void, options: PickerOptio
     // 프레임 요소는 선택할 수 없으므로 다른 윤곽선으로 구분한다.
     outline.classList.toggle('blocked', frameBlockedReason(hovered.tagName) !== null);
     outline.hidden = false;
+    drawLabel(hovered, rect);
   };
 
   const onPointerMove = (event: PointerEvent): void => {
@@ -127,6 +162,10 @@ export function createPicker(onPick: (el: Element) => void, options: PickerOptio
       outline.className = 'outline';
       outline.hidden = true;
       overlayRoot.append(outline);
+      label = document.createElement('div');
+      label.className = 'pick-label';
+      label.hidden = true;
+      overlayRoot.append(label);
       window.addEventListener('pointermove', onPointerMove, true);
       window.addEventListener('pointerout', onPointerOut, true);
       window.addEventListener('scroll', onScroll, { capture: true, passive: true });
@@ -148,6 +187,8 @@ export function createPicker(onPick: (el: Element) => void, options: PickerOptio
       for (const type of SUPPRESSED_EVENTS) window.removeEventListener(type, suppress, true);
       outline.remove();
       outline = null;
+      label?.remove();
+      label = null;
       hovered = null;
     },
   };

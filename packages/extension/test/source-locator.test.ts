@@ -1,6 +1,13 @@
-import { DOMIRROR_ATTR } from '@domirror/shared';
+import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, DOMIRROR_DS_ATTR } from '@domirror/shared';
 import { describe, expect, it } from 'vitest';
-import { countSameSource, locate, sameSourceSelector, selectorHint, type LocatableElement } from '../src/source-locator.js';
+import {
+  countSameSource,
+  locate,
+  locateComponent,
+  sameSourceSelector,
+  selectorHint,
+  type LocatableElement,
+} from '../src/source-locator.js';
 
 /** `closest('[data-domirror]')`만 흉내 내는 가짜 요소. */
 class FakeElement implements LocatableElement {
@@ -47,6 +54,58 @@ describe('locate', () => {
     const body = new FakeElement('BODY', {});
     const div = new FakeElement('DIV', { [DOMIRROR_ATTR]: 'x:0:1' }, body);
     expect(locate(div)).toBeNull();
+  });
+});
+
+/** `closest('[data-domirror-component]')` 체인을 흉내 내는 가짜 요소(AC-6). */
+class FakeComponentElement implements LocatableElement {
+  constructor(
+    readonly tagName: string,
+    private readonly attrs: Record<string, string>,
+    readonly parentElement: FakeComponentElement | null = null,
+  ) {}
+
+  getAttribute(name: string): string | null {
+    return this.attrs[name] ?? null;
+  }
+
+  closest(selectors: string): FakeComponentElement | null {
+    expect(selectors).toBe(`[${DOMIRROR_COMPONENT_ATTR}]`);
+    if (this.getAttribute(DOMIRROR_COMPONENT_ATTR) !== null) return this;
+    return this.parentElement?.closest(selectors) ?? null;
+  }
+}
+
+describe('locateComponent', () => {
+  it('요소 자신의 컴포넌트 정보를 이름·정의 파일로 나눈다', () => {
+    const el = new FakeComponentElement('BUTTON', { [DOMIRROR_COMPONENT_ATTR]: 'Button|src/ds/Button.tsx' });
+    expect(locateComponent(el)).toEqual({ name: 'Button', source: 'src/ds/Button.tsx', designSystem: false });
+  });
+
+  it('data-domirror-ds가 있으면 designSystem=true', () => {
+    const el = new FakeComponentElement('BUTTON', {
+      [DOMIRROR_COMPONENT_ATTR]: 'Button|src/ds/Button.tsx',
+      [DOMIRROR_DS_ATTR]: '',
+    });
+    expect(locateComponent(el)).toEqual({ name: 'Button', source: 'src/ds/Button.tsx', designSystem: true });
+  });
+
+  it('값이 깨진 요소는 건너뛰고 더 위 조상을 찾는다', () => {
+    const root = new FakeComponentElement('MAIN', {
+      [DOMIRROR_COMPONENT_ATTR]: 'Card|src/components/Card.tsx',
+    });
+    const broken = new FakeComponentElement('DIV', { [DOMIRROR_COMPONENT_ATTR]: 'garbage' }, root);
+    expect(locateComponent(broken)).toEqual({
+      name: 'Card',
+      source: 'src/components/Card.tsx',
+      designSystem: false,
+    });
+  });
+
+  it('자신과 조상에 컴포넌트 속성이 없으면 null (E-9)', () => {
+    const body = new FakeComponentElement('BODY', {});
+    const div = new FakeComponentElement('DIV', { class: 'plain' }, body);
+    expect(locateComponent(div)).toBeNull();
   });
 });
 
