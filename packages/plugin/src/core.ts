@@ -1,4 +1,5 @@
 import type { InjectResult, Injector } from '@domirror/shared';
+import type { DesignSystemMatcher } from './design-system.js';
 import { reactInjector } from './injectors/react.js';
 import { vueInjector } from './injectors/vue.js';
 import { toRelativeFile } from './paths.js';
@@ -8,6 +9,8 @@ export interface DomirrorOptions {
   enabled?: boolean;
   /** 기본 주입기 뒤에 추가된다 (FR-4). */
   injectors?: Injector[];
+  /** 정의 파일 경로 glob 또는 import specifier. 일치하면 DS 속성을 넣는다. 기본 []. */
+  designSystem?: string[];
 }
 
 export const defaultInjectors: Injector[] = [reactInjector, vueInjector];
@@ -16,8 +19,9 @@ export const defaultInjectors: Injector[] = [reactInjector, vueInjector];
 export function createTransformer(opts: {
   root: string;
   injectors: Injector[];
+  isDesignSystem?: DesignSystemMatcher;
 }): (code: string, id: string) => InjectResult | null {
-  const { root, injectors } = opts;
+  const { root, injectors, isDesignSystem } = opts;
 
   return (code, id) => {
     // 루트 밖·node_modules·가상 모듈·쿼리 붙은 id에는 주입하지 않는다 (NFR-2).
@@ -25,6 +29,6 @@ export function createTransformer(opts: {
 
     const injector = injectors.find((candidate) => candidate.test(id));
     if (!injector) return null;
-    return injector.transform(code, id, { root });
+    return injector.transform(code, id, { root, isDesignSystem });
   };
 }

@@ -1,11 +1,12 @@
 import type { InjectResult } from '@domirror/shared';
 import type { Plugin } from 'vite';
 import { createTransformer, defaultInjectors, type DomirrorOptions } from './core.js';
+import { createDesignSystemMatcher } from './design-system.js';
 import { InjectError } from './inject-utils.js';
 
 export type { DomirrorOptions } from './core.js';
 
-const PRODUCTION_WARNING = '[domirror] 프로덕션 모드 빌드에 소스 위치를 주입합니다. 운영 배포물에 사용하지 마세요.';
+const PRODUCTION_WARNING = '[domirror] 프로덕션 모드 빌드에 소스 위치·컴포넌트 정보를 주입합니다. 운영 배포물에 사용하지 마세요.';
 
 /** Vite 어댑터. JSX·SFC가 컴파일되기 전 원본을 받도록 `enforce: 'pre'`로 동작한다. */
 export default function domirror(options: DomirrorOptions = {}): Plugin {
@@ -21,6 +22,7 @@ export default function domirror(options: DomirrorOptions = {}): Plugin {
       transform = createTransformer({
         root: config.root,
         injectors: [...defaultInjectors, ...(options.injectors ?? [])],
+        isDesignSystem: createDesignSystemMatcher(options.designSystem ?? []),
       });
       if (config.isProduction) config.logger.warn(PRODUCTION_WARNING);
     },

@@ -138,7 +138,7 @@ describe('NFR-2: 프로덕션 모드 경고', () => {
   it('enabled:true 프로덕션 빌드에서 경고가 정확히 1회 출력된다', async () => {
     const warnings = await buildReact(true);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('프로덕션 모드 빌드에 소스 위치를 주입합니다');
+    expect(warnings[0]).toContain('프로덕션 모드 빌드에 소스 위치·컴포넌트 정보를 주입합니다');
   });
 
   it('enabled:false 프로덕션 빌드에서는 경고가 0회다', async () => {

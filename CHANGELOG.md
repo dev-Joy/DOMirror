@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.23] - 2026-11-17
+
+### Added
+
+- 플러그인 `designSystem` 옵션과 glob(`*`·`**`)·import specifier 판정 매처(`createDesignSystemMatcher`) 추가
+- 주입기 컨텍스트로 DS 판정 함수 `isDesignSystem` 전달
+
+### Changed
+
+- 프로덕션 모드 경고 문구에 "컴포넌트 정보 주입" 안내 추가
+
 ## [0.1.22] - 2026-11-17
 
 ### Added

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { Injector } from '@domirror/shared';
 import { createTransformer, defaultInjectors } from '../src/core.js';
+import { createDesignSystemMatcher } from '../src/design-system.js';
 import { toRelativeFile } from '../src/paths.js';
 
 const root = '/proj';
@@ -43,5 +45,46 @@ describe('createTransformer', () => {
 
   it('대상 확장자가 아니면 null', () => {
     expect(transform('export const a = 1;', '/proj/src/a.ts')).toBeNull();
+  });
+});
+
+describe('AC-1: designSystem 판정', () => {
+  const globMatcher = createDesignSystemMatcher(['src/ds/**']);
+  const specifierMatcher = createDesignSystemMatcher(['@acme/ui']);
+
+  it('정의 파일 경로는 glob으로 일치한다', () => {
+    expect(globMatcher({ file: 'src/ds/Button.tsx' })).toBe(true);
+    expect(globMatcher({ file: 'src/components/Card.tsx' })).toBe(false);
+  });
+
+  it('import specifier는 정확 일치·하위 경로로 일치한다', () => {
+    expect(specifierMatcher({ specifier: '@acme/ui' })).toBe(true);
+    expect(specifierMatcher({ specifier: '@acme/ui/button' })).toBe(true);
+    expect(specifierMatcher({ specifier: '@acme/uikit' })).toBe(false);
+  });
+
+  it('빈 배열은 항상 false다', () => {
+    const matcher = createDesignSystemMatcher([]);
+    expect(matcher({ file: 'src/ds/Button.tsx' })).toBe(false);
+    expect(matcher({ specifier: '@acme/ui' })).toBe(false);
+  });
+
+  it('createTransformer가 같은 판정 함수 참조를 ctx로 넘긴다', () => {
+    const seen: (unknown)[] = [];
+    const fake: Injector = {
+      name: 'fake',
+      test: (id) => id.endsWith('.js'),
+      transform(code, _id, ctx) {
+        seen.push(ctx.isDesignSystem);
+        return { code, map: null };
+      },
+    };
+    const isDesignSystem = createDesignSystemMatcher(['src/ds/**']);
+    const run = createTransformer({ root, injectors: [fake], isDesignSystem });
+
+    run('export const a = 1;\n', '/proj/src/ds/entry.js');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(isDesignSystem);
+    expect(isDesignSystem({ file: 'src/ds/Button.tsx' })).toBe(true);
   });
 });
