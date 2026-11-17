@@ -1,6 +1,6 @@
-import { CHANGES_PATH, type StyleChangeInput } from '@domirror/shared';
+import { CHANGES_PATH, COMMENTS_PATH, type ScreenCommentInput, type StyleChangeInput } from '@domirror/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { isValidPort, postChanges } from '../src/relay.js';
+import { isValidPort, postChanges, postComments } from '../src/relay.js';
 
 const change: StyleChangeInput = {
   id: 'chg-1',
@@ -10,6 +10,15 @@ const change: StyleChangeInput = {
   before: { authored: '8px', computed: '8px' },
   after: '16px',
   pageUrl: 'http://localhost:5173/',
+  createdAt: '2026-11-16T00:00:00.000Z',
+};
+
+const comment: ScreenCommentInput = {
+  id: 'cmt-1',
+  source: { file: 'src/App.tsx', line: 12, column: 5, inherited: false },
+  selectorHint: 'div.card',
+  pageUrl: 'http://localhost:5173/',
+  body: '패딩이 너무 넓어 보입니다',
   createdAt: '2026-11-16T00:00:00.000Z',
 };
 
@@ -77,6 +86,72 @@ describe('postChanges', () => {
 
     for (const port of [0, -1, 65536, 1.5, Number.NaN]) {
       const result = await postChanges(port, [change], fetchImpl);
+      expect(result.ok).toBe(false);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('postComments', () => {
+  it('성공 시 accepted 수를 돌려주고 127.0.0.1:<port>/comments로 JSON POST한다', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, { accepted: 1, ids: ['cmt-1'] }));
+
+    await expect(postComments(47321, [comment], fetchImpl)).resolves.toEqual({ ok: true, accepted: 1 });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe(`http://127.0.0.1:47321${COMMENTS_PATH}`);
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init?.body as string)).toEqual({ comments: [comment] });
+  });
+
+  it('비 2xx는 상태 코드와 서버 오류 문구를 담아 실패로 돌려준다', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(403, { error: 'Origin not allowed' }));
+
+    const result = await postComments(47321, [comment], fetchImpl);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('403');
+      expect(result.error).toContain('Origin not allowed');
+    }
+  });
+
+  it('비 2xx 본문이 JSON이 아니어도 상태 코드로 실패를 돌려준다', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('oops', { status: 500 }));
+
+    const result = await postComments(47321, [comment], fetchImpl);
+
+    expect(result).toEqual({ ok: false, error: '서버 오류 HTTP 500' });
+  });
+
+  it('네트워크 오류(서버 꺼짐)는 예외 대신 실패로 돌려준다', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const result = await postComments(47321, [comment], fetchImpl);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('127.0.0.1:47321');
+      expect(result.error).toContain('Failed to fetch');
+    }
+  });
+
+  it('2xx라도 응답 형식이 맞지 않으면 실패로 돌려준다', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, { ids: [] }));
+
+    await expect(postComments(47321, [comment], fetchImpl)).resolves.toEqual({
+      ok: false,
+      error: '서버 응답 형식이 올바르지 않습니다',
+    });
+  });
+
+  it('잘못된 포트는 요청하지 않고 실패로 돌려준다', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    for (const port of [0, -1, 65536, 1.5, Number.NaN]) {
+      const result = await postComments(port, [comment], fetchImpl);
       expect(result.ok).toBe(false);
     }
     expect(fetchImpl).not.toHaveBeenCalled();

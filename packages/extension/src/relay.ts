@@ -1,4 +1,12 @@
-import { CHANGES_PATH, type PostChangesRequest, type SendResult, type StyleChangeInput } from '@domirror/shared';
+import {
+  CHANGES_PATH,
+  COMMENTS_PATH,
+  type PostChangesRequest,
+  type PostCommentsRequest,
+  type ScreenCommentInput,
+  type SendResult,
+  type StyleChangeInput,
+} from '@domirror/shared';
 
 /** 서버가 응답하지 않을 때 패널이 무한 대기하지 않도록 끊는 시간. */
 export const RELAY_TIMEOUT_MS = 10_000;
@@ -23,23 +31,24 @@ async function readServerError(res: Response): Promise<string> {
 }
 
 /**
- * `POST http://127.0.0.1:<port>/changes`. 예외를 던지지 않고 네트워크 오류·비 2xx·잘못된 응답을
+ * `POST http://127.0.0.1:<port><path>`. 예외를 던지지 않고 네트워크 오류·비 2xx·잘못된 응답을
  * 모두 `{ ok: false, error }`로 돌려준다(E-4: 호출 측은 실패 시 내역을 유지한다).
  */
-export async function postChanges(
+async function postJson(
   port: number,
-  changes: StyleChangeInput[],
-  fetchImpl: typeof fetch = fetch,
+  path: string,
+  payload: unknown,
+  fetchImpl: typeof fetch,
 ): Promise<SendResult> {
   if (!isValidPort(port)) return { ok: false, error: `잘못된 포트: ${String(port)}` };
 
-  const endpoint = `http://127.0.0.1:${port}${CHANGES_PATH}`;
+  const endpoint = `http://127.0.0.1:${port}${path}`;
   let res: Response;
   try {
     res = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ changes } satisfies PostChangesRequest),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
     });
   } catch (error) {
@@ -61,4 +70,22 @@ export async function postChanges(
     return { ok: false, error: '서버 응답 형식이 올바르지 않습니다' };
   }
   return { ok: true, accepted: body.accepted };
+}
+
+/** `POST http://127.0.0.1:<port>/changes`. */
+export async function postChanges(
+  port: number,
+  changes: StyleChangeInput[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<SendResult> {
+  return postJson(port, CHANGES_PATH, { changes } satisfies PostChangesRequest, fetchImpl);
+}
+
+/** `POST http://127.0.0.1:<port>/comments`. */
+export async function postComments(
+  port: number,
+  comments: ScreenCommentInput[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<SendResult> {
+  return postJson(port, COMMENTS_PATH, { comments } satisfies PostCommentsRequest, fetchImpl);
 }

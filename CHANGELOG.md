@@ -2,6 +2,16 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.37] - 2026-11-17
+
+### Added
+
+- 익스텐션 `relay.postComments`와 서비스 워커 `domirror:send-comments` 분기·메시지 가드, 전송 단위 테스트
+
+### Changed
+
+- HTTP 전송 공통부를 `postJson`으로 추출(기존 CSS 변경 전송 동작·문구 유지)
+
 ## [0.1.36] - 2026-11-17
 
 ### Added
