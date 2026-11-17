@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.43] - 2026-11-17
+
+### Changed
+
+- INT-005를 done으로 전이하고 `result.md`(결과·변경 산출물·Tier 3 검증·정합성 2-pass·잔여 리스크)를 작성, 태스크 6건 완료와 INDEX(done 4건) 갱신
+
 ## [0.1.42] - 2026-11-17
 
 ### Fixed

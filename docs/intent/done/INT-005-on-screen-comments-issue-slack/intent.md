@@ -1,11 +1,11 @@
 ---
 id: INT-005
 title: 화면 위 코멘트 작성과 GitHub Issues·Slack 연동
-status: active
+status: done
 priority: P2
 created: 2026-11-17
 updated: 2026-11-17
-updated_at: 2026-11-17T21:12:37+09:00
+updated_at: 2026-11-17T23:04:22+09:00
 ---
 
 # Intent: 화면 위 코멘트 작성과 GitHub Issues·Slack 연동
@@ -49,9 +49,15 @@ updated_at: 2026-11-17T21:12:37+09:00
 - [x] 코멘트를 로컬에도 보관하는가? 보관한다면 서버 재시작 시 소실(`README.md:264`)을 허용하는가? → 답변: 서버 메모리 보관, CSS 변경 큐와 동일하게 재시작 시 소실 허용 (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] shared 타입·상수: `ScreenComment`·`ScreenCommentInput`(status 포함)·`PostCommentsRequest`·`PostCommentsResponse`·`ContentToWorkerCommentsMessage` 타입과 `COMMENTS_PATH` 상수, index 재내보내기 (plan Step 1)
-- [ ] T-02 [P2] server 저장소·라우트: `CommentStore`(upsert·list·markResolved·500건 상한)·zod 스키마·`POST /comments`·`createHttpServer` opts·cli 주입 (Step 2~3)
-- [ ] T-03 [P2] MCP 도구: `list_comments`(open만)·`mark_comments_resolved`·`createMcpFactory` 인자 확장·통합 테스트 툴 목록 갱신 (Step 4)
-- [ ] T-04 [P2] extension 전송: `relay.postComments`·service worker `isSendCommentsMessage` 가드·`onMessage` 분기·단위 테스트 (Step 5)
-- [ ] T-05 [P2] extension UI: 패널 코멘트 입력·목록·전송 상태, 화면 핀·단일 rAF 추적, `commentsKey` 로컬 보관·activate 복원, `content.ts` 연결 (Step 6)
-- [ ] T-06 [P2] README·종단 검증: 사용법·MCP 도구 목록·보안·운영 갱신 (Step 7, AC-6·AC-7)
+- [x] T-01 [P2] shared 타입·상수: `ScreenComment`·`ScreenCommentInput`(status 제외)·`PostCommentsRequest`·`PostCommentsResponse`·`ContentToWorkerCommentsMessage` 타입과 `COMMENTS_PATH` 상수, index 재내보내기 (plan Step 1) (2026-11-17)
+- [x] T-02 [P2] server 저장소·라우트: `CommentStore`(upsert·list·markResolved·500건 상한)·zod 스키마·`POST /comments`·`createHttpServer` opts·cli 주입 (Step 2~3) (2026-11-17)
+- [x] T-03 [P2] MCP 도구: `list_comments`(open만)·`mark_comments_resolved`·`createMcpFactory` 인자 확장·통합 테스트 툴 목록 갱신 (Step 4) (2026-11-17)
+- [x] T-04 [P2] extension 전송: `relay.postComments`·service worker `isSendCommentsMessage` 가드·`onMessage` 분기·단위 테스트 (Step 5) (2026-11-17)
+- [x] T-05 [P2] extension UI: 패널 코멘트 입력·목록·전송 상태, 화면 핀·단일 rAF 추적, `commentsKey` 로컬 보관·activate 복원, `content.ts` 연결 (Step 6) (2026-11-17)
+- [x] T-06 [P2] README·종단 검증: 사용법·MCP 도구 목록·보안·운영 갱신 (Step 7, AC-6·AC-7) (2026-11-17)
+
+## 결과
+- 완료일: 2026-11-17.
+- 빌드 시 요소 소스 위치 기반 코멘트 작성·화면 번호 핀·`chrome.storage.local` 복원, 서버 `POST /comments`·`CommentStore`(500건), MCP `list_comments`·`mark_comments_resolved` 구현.
+- Tier 3 검증 Pass(AC-1~AC-8). 정합성 필수(하드) 2-pass: 1차 FAIL(스테일 주석) → 수정 후 2차 PASS_WITH_NOTES(비차단 NOTE 6).
+- 상세: [result.md](result.md)

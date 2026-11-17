@@ -5,7 +5,7 @@
 ## 요약
 | 상태 | planned | active | hold | done | **합계** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| 건수 | 4 | 1 | 0 | 3 | **8** |
+| 건수 | 4 | 0 | 0 | 4 | **8** |
 
 ## Planned (미착수)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
@@ -18,7 +18,6 @@
 ## Active (작업 중)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
 | :--- | :--- | :--- | :--- | :--- |
-| [INT-005](active/INT-005-on-screen-comments-issue-slack/intent.md) | 화면 위 코멘트 작성과 GitHub Issues·Slack 연동 | P2 | 0/6 | 2026-11-17 |
 
 ## Hold (보류)
 | ID | 제목 | 보류 사유 | 재개 조건 | 갱신 |
@@ -30,3 +29,4 @@
 | [INT-001](done/INT-001-click-to-source-css-edit/intent.md) | 브라우저 클릭 CSS 수정의 소스 코드 반영 (프레임워크 무관 DOM→소스 매핑) | 2026-11-17 | 플러그인+익스텐션+로컬 MCP 서버 구현, React·Vue AC-8 종단 확인, 게이트 필수(하드) 2-pass PASS_WITH_NOTES ×2 ([result.md](done/INT-001-click-to-source-css-edit/result.md)) |
 | [INT-002](done/INT-002-devtools-mcp-apply-verify/intent.md) | chrome-devtools-mcp로 소스 반영 결과 자동 확인 (워크플로 문서화) | 2026-11-17 | README에 chrome-devtools-mcp 병행 등록·검증 프롬프트·스니펫·보안 주의 추가(코드 변경 0건), 게이트 조건부-실행 1-pass 재판정 PASS_WITH_NOTES ([result.md](done/INT-002-devtools-mcp-apply-verify/result.md)) |
 | [INT-004](done/INT-004-component-name-overlay/intent.md) | 화면에 컴포넌트 이름 표시 (디자인 시스템 컴포넌트 사용 여부 확인) | 2026-11-17 | 빌드 시 컴포넌트 이름·DS 속성 주입(React/Vue), 익스텐션 호버 라벨·패널 표시, 예제·README 갱신. Tier 3 검증 Pass, 게이트 필수(하드) 2-pass PASS_WITH_NOTES ([result.md](done/INT-004-component-name-overlay/result.md)) |
+| [INT-005](done/INT-005-on-screen-comments-issue-slack/intent.md) | 화면 위 코멘트 작성과 GitHub Issues·Slack 연동 | 2026-11-17 | 소스 위치 기반 코멘트 작성·번호 핀·`chrome.storage.local` 복원, 서버 `POST /comments`·`CommentStore`(500건), MCP `list_comments`·`mark_comments_resolved`. Tier 3 검증 Pass(AC-1~AC-8), 게이트 필수(하드) 2-pass FAIL→PASS_WITH_NOTES. GitHub Issues·Slack 연동은 후속 ([result.md](done/INT-005-on-screen-comments-issue-slack/result.md)) |
