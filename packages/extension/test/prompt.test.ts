@@ -125,7 +125,7 @@ describe('buildPrompt — 선택 요소 모드 (AC-4·FR-3)', () => {
       kind: 'selection',
       selection: {
         hint: 'div.card',
-        located: { location: { file: 'src/App.tsx', line: 12, column: 5 }, inherited: false },
+        located: { location: { file: 'src/App.tsx', line: 12, column: 5 }, inherited: false, protected: false },
         pageUrl: PAGE,
       },
     });
@@ -150,7 +150,7 @@ describe('buildPrompt — 선택 요소 모드 (AC-4·FR-3)', () => {
       kind: 'selection',
       selection: {
         hint: 'span.label',
-        located: { location: { file: 'src/Card.vue', line: 3, column: 1 }, inherited: true },
+        located: { location: { file: 'src/Card.vue', line: 3, column: 1 }, inherited: true, protected: false },
         pageUrl: PAGE,
       },
     });

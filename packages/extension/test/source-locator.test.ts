@@ -1,4 +1,4 @@
-import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, DOMIRROR_DS_ATTR } from '@domirror/shared';
+import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, DOMIRROR_DS_ATTR, DOMIRROR_PROTECTED_ATTR } from '@domirror/shared';
 import { describe, expect, it } from 'vitest';
 import {
   countSameSource,
@@ -31,7 +31,11 @@ class FakeElement implements LocatableElement {
 describe('locate', () => {
   it('요소 자신의 위치를 쓰면 inherited=false', () => {
     const el = new FakeElement('DIV', { [DOMIRROR_ATTR]: 'src/App.tsx:12:5' });
-    expect(locate(el)).toEqual({ location: { file: 'src/App.tsx', line: 12, column: 5 }, inherited: false });
+    expect(locate(el)).toEqual({
+      location: { file: 'src/App.tsx', line: 12, column: 5 },
+      inherited: false,
+      protected: false,
+    });
   });
 
   it('속성 없는 요소는 가장 가까운 조상 위치를 쓴다 (E-1·E-3)', () => {
@@ -41,19 +45,68 @@ describe('locate', () => {
     expect(locate(span)).toEqual({
       location: { file: 'src/components/Card.tsx', line: 16, column: 5 },
       inherited: true,
+      protected: false,
     });
   });
 
   it('값이 깨진 요소는 건너뛰고 더 위 조상을 찾는다', () => {
     const root = new FakeElement('MAIN', { [DOMIRROR_ATTR]: 'src/App.tsx:7:5' });
     const broken = new FakeElement('DIV', { [DOMIRROR_ATTR]: 'garbage' }, root);
-    expect(locate(broken)).toEqual({ location: { file: 'src/App.tsx', line: 7, column: 5 }, inherited: true });
+    expect(locate(broken)).toEqual({
+      location: { file: 'src/App.tsx', line: 7, column: 5 },
+      inherited: true,
+      protected: false,
+    });
   });
 
   it('조상에도 위치가 없으면 null (전송 제외)', () => {
     const body = new FakeElement('BODY', {});
     const div = new FakeElement('DIV', { [DOMIRROR_ATTR]: 'x:0:1' }, body);
     expect(locate(div)).toBeNull();
+  });
+
+  it('자신이 보호 속성을 가지면 protected=true (AC-4)', () => {
+    const el = new FakeElement('DIV', {
+      [DOMIRROR_ATTR]: 'src/App.tsx:12:5',
+      [DOMIRROR_PROTECTED_ATTR]: '',
+    });
+    expect(locate(el)).toEqual({
+      location: { file: 'src/App.tsx', line: 12, column: 5 },
+      inherited: false,
+      protected: true,
+    });
+  });
+
+  it('조상에게 위치와 보호 속성을 함께 물려받으면 protected=true (AC-4·E-1)', () => {
+    const root = new FakeElement('MAIN', {
+      [DOMIRROR_ATTR]: 'src/App.tsx:7:5',
+      [DOMIRROR_PROTECTED_ATTR]: '',
+    });
+    const span = new FakeElement('SPAN', { class: 'card-label' }, root);
+    expect(locate(span)).toEqual({
+      location: { file: 'src/App.tsx', line: 7, column: 5 },
+      inherited: true,
+      protected: true,
+    });
+  });
+
+  it('보호 속성이 없으면 protected=false (AC-4)', () => {
+    const el = new FakeElement('DIV', { [DOMIRROR_ATTR]: 'src/App.tsx:12:5' });
+    expect(locate(el)).toEqual({
+      location: { file: 'src/App.tsx', line: 12, column: 5 },
+      inherited: false,
+      protected: false,
+    });
+  });
+
+  it('자신에 보호 속성만 있고 위치는 조상이 주면 protected=false (AC-4·E-1)', () => {
+    const root = new FakeElement('MAIN', { [DOMIRROR_ATTR]: 'src/App.tsx:7:5' });
+    const div = new FakeElement('DIV', { [DOMIRROR_PROTECTED_ATTR]: '' }, root);
+    expect(locate(div)).toEqual({
+      location: { file: 'src/App.tsx', line: 7, column: 5 },
+      inherited: true,
+      protected: false,
+    });
   });
 });
 

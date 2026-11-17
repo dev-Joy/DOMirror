@@ -531,7 +531,7 @@ class EditSession {
     const located = locate(el);
     const change: LocalChange = {
       id: newId(),
-      source: located ? { ...located.location, inherited: located.inherited } : null,
+      source: located ? { ...located.location, inherited: located.inherited, protected: located.protected } : null,
       selectorHint: selectorHint(el),
       property,
       // 적용 전에 읽는다(이 요소의 원래 값 판정에도 쓴다). 같은 key의 연속 편집이면 recordChange가 최초 값을 유지한다.

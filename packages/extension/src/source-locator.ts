@@ -2,6 +2,7 @@ import {
   DOMIRROR_ATTR,
   DOMIRROR_COMPONENT_ATTR,
   DOMIRROR_DS_ATTR,
+  DOMIRROR_PROTECTED_ATTR,
   parseComponentInfo,
   parseSourceLocation,
   type ComponentInfo,
@@ -23,6 +24,8 @@ export interface Located {
   location: SourceLocation;
   /** 선택 요소가 아니라 조상의 위치를 쓴 경우 true (E-1·E-3). */
   inherited: boolean;
+  /** 위치를 제공한 요소에 보호 속성이 있으면 true (FR-5·E-1·E-4). */
+  protected: boolean;
 }
 
 export interface LocatedComponent extends ComponentInfo {
@@ -42,7 +45,13 @@ export function locate(el: LocatableElement): Located | null {
   let current = el.closest(ATTR_SELECTOR);
   while (current) {
     const location = parseSourceLocation(current.getAttribute(DOMIRROR_ATTR) ?? '');
-    if (location) return { location, inherited: current !== el };
+    if (location)
+      // 보호 여부는 위치를 제공한 요소(자신 또는 조상) 기준으로 판정한다(E-1).
+      return {
+        location,
+        inherited: current !== el,
+        protected: current.getAttribute(DOMIRROR_PROTECTED_ATTR) !== null,
+      };
     current = current.parentElement?.closest(ATTR_SELECTOR) ?? null;
   }
   return null;

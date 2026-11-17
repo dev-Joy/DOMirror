@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.49] - 2026-11-18
+
+### Added
+
+- INT-007 Phase 4: 익스텐션 `locate`가 위치를 제공한 요소의 보호 표식을 읽어 `source.protected`로 전달
+- INT-007 Phase 4: 위치 상속 시 조상 기준 판정(E-1) 테스트 4건 추가
+
 ## [0.1.48] - 2026-11-18
 
 ### Added
