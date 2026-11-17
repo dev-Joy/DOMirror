@@ -29,7 +29,7 @@ export function dsAttributeText(): string {
   return ` ${DOMIRROR_DS_ATTR}`;
 }
 
-/** 값이 없는 보호 영역(수정 금지) 표시 속성 텍스트(앞 공백 포함, FR-2). */
+/** 값이 없는 보호 영역(수정 금지) 표시 속성 텍스트(앞 공백 포함, FR-3). */
 export function protectedAttributeText(): string {
   return ` ${DOMIRROR_PROTECTED_ATTR}`;
 }
