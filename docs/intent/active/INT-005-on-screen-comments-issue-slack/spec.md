@@ -60,7 +60,7 @@
 - FR-2 코멘트 고정 정보: 생성된 코멘트에는 `source`(`locate` 결과 file·line·column·inherited), `selectorHint`, `pageUrl`(`location.href`), `body`, `createdAt`(ISO 8601), `id`가 들어간다. 요소에 `data-domirror`가 없으면(`locate`가 `null`) 작성을 막고 이유를 표시한다.
 - FR-3 서버 전송: '코멘트 남기기'를 누르면 즉시 content → service worker → `POST /comments`로 보낸다(D-S2). 메시지 타입은 `'domirror:send-comments'`이고 서비스 워커는 별도 가드로 검사한다. 성공·실패는 패널에 표시하며, 실패해도 예외로 화면이 멈추지 않는다(`relay.ts` `{ok:false}` 관례).
 - FR-4 서버 저장: `POST /comments`는 `{comments: ScreenCommentInput[]}`를 받아 zod로 검증하고 `CommentStore`에 저장한 뒤 `{accepted, ids}`를 돌려준다. 같은 `id`를 다시 받으면 덮어쓴다(멱등 재전송).
-- FR-5 MCP 조회: MCP 도구 `list_comments`(`readOnlyHint`)가 저장된 코멘트 전체를 `{comments: ScreenComment[]}`로 돌려준다(`jsonResult()` 재사용). 코멘트 처리 완료 표시 도구 포함 여부는 §10 Q2로 확정한다.
+- FR-5 MCP 조회: MCP 도구 `list_comments`(`readOnlyHint`)가 `status: 'open'`인 코멘트만 `{comments: ScreenComment[]}`로 돌려준다(`jsonResult()` 재사용). `mark_comments_resolved`(`{ids}` → `{resolved, notFound}`, `idempotentHint`)가 지정한 코멘트를 `status: 'resolved'`로 전이한다(§10 Q2=B 확정).
 - FR-6 화면 핀 표시: 작성한 코멘트는 대상 요소 근처에 번호 핀으로 표시되고, 스크롤·레이아웃 변화에 따라 요소를 따라간다(`createSelectionHighlight`의 rAF 추적 방식 재사용). 핀을 누르면 코멘트 본문이 보인다.
 - FR-7 패널 목록: 패널에 현재 페이지(`pageUrl` 일치)의 코멘트 목록(번호·소스 위치 `formatSourceLocation`·본문 앞부분·전송 상태)이 보인다.
 - FR-8 새로고침 후 복원: 페이지를 다시 열었을 때 핀을 어떻게 복원할지는 §10 Q1로 확정한다.

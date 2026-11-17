@@ -199,7 +199,7 @@ describe('domirror server (HTTP + MCP)', () => {
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ accepted: 1, ids: ['cmt-1'] });
 
-    // MCP 도구는 다음 단계이므로 서버와 공유한 저장소를 직접 조회해 검증한다.
+    // 저장소 직접 조회로 저장 필드·status를 먼저 확인한다(MCP 경유 단언은 아래 AC-1 MCP 테스트에서 별도 확인).
     expect(commentStore.listOpen()).toEqual([{ ...comment, status: 'open' }]);
 
     // 빈 배열도 허용한다(accepted: 0).

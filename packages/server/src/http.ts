@@ -16,7 +16,7 @@ import { isOriginAllowed } from './origin.js';
 import { PostChangesRequestSchema, PostCommentsRequestSchema } from './schema.js';
 import type { ChangeStore } from './store.js';
 
-/** `POST /changes`·`/mcp` 공통 본문 상한. */
+/** `POST /changes`·`/comments`·`/mcp` 공통 본문 상한. */
 export const MAX_BODY_BYTES = 1024 * 1024;
 
 class HttpError extends Error {
@@ -148,7 +148,7 @@ export function createHttpServer(opts: { store: ChangeStore; commentStore: Comme
       handlePostChanges(req, res, store).catch((error: unknown) => respondError(res, error));
       return;
     }
-    // MCP는 다음 단계다. `commentStore`는 이 라우트에서만 쓰인다.
+    // POST /comments — commentStore는 이 라우트와 MCP list_comments·mark_comments_resolved가 공유한다.
     if (pathname === COMMENTS_PATH && req.method === 'POST') {
       handlePostComments(req, res, commentStore).catch((error: unknown) => respondError(res, error));
       return;
