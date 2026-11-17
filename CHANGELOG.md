@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.46] - 2026-11-18
+
+### Added
+
+- INT-007 Phase 1: `DOMIRROR_PROTECTED_ATTR` 상수, `ProtectedAreaWarning`·`PendingChange` 타입 추가
+- INT-007 Phase 1: `StyleChange.source.protected?`·`InjectorContext.isProtected?` 선택 필드 확장(비파괴)
+
 ## [0.1.45] - 2026-11-17
 
 ### Changed

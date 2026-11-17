@@ -7,6 +7,7 @@ export interface InjectorContext {
   root: string;
   /** core가 판정 함수를 넘긴다. 없으면 DS 판정을 하지 않는다. */
   isDesignSystem?: (target: { file?: string; specifier?: string }) => boolean;
+  isProtected?: (file: string) => boolean;
 }
 
 /** 프레임워크별 주입기 공통 인터페이스 (FR-4). */
@@ -18,7 +19,7 @@ export interface Injector {
 
 export interface StyleChange {
   id: string;
-  source: { file: string; line: number; column: number; inherited: boolean };
+  source: { file: string; line: number; column: number; inherited: boolean; protected?: boolean };
   selectorHint: string;
   property: string;
   before: { authored: string | null; computed: string };
@@ -27,6 +28,14 @@ export interface StyleChange {
   createdAt: string;
   status: 'pending' | 'applied';
 }
+
+export interface ProtectedAreaWarning {
+  code: 'protected-area';
+  reason: 'pattern' | 'node_modules';
+  message: string;
+}
+
+export type PendingChange = StyleChange & { warning?: ProtectedAreaWarning };
 
 export type StyleChangeInput = Omit<StyleChange, 'status'>;
 
