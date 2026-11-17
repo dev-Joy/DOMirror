@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.47] - 2026-11-18
+
+### Added
+
+- INT-007 Phase 2: 플러그인 옵션 `protected?: string[]`(미설정 시 `designSystem` 폴백, `[]`면 패턴 보호 없음)와 `isProtected` 판정 배선 추가
+- INT-007 Phase 2: `protectedAttributeText()` 헬퍼 및 core AC-1 protected 판정 테스트 4건
+
 ## [0.1.46] - 2026-11-18
 
 ### Added

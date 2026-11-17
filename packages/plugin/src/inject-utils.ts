@@ -2,6 +2,7 @@ import {
   DOMIRROR_ATTR,
   DOMIRROR_COMPONENT_ATTR,
   DOMIRROR_DS_ATTR,
+  DOMIRROR_PROTECTED_ATTR,
   formatSourceLocation,
 } from '@domirror/shared';
 
@@ -26,6 +27,11 @@ export function componentAttributeText(value: string): string {
 /** 값이 없는 디자인 시스템 표시 속성 텍스트(앞 공백 포함, FR-6). */
 export function dsAttributeText(): string {
   return ` ${DOMIRROR_DS_ATTR}`;
+}
+
+/** 값이 없는 보호 영역(수정 금지) 표시 속성 텍스트(앞 공백 포함, FR-2). */
+export function protectedAttributeText(): string {
+  return ` ${DOMIRROR_PROTECTED_ATTR}`;
 }
 
 /** 주입기 내부 예외를 소스 위치와 함께 감싼다 (NFR-4). */

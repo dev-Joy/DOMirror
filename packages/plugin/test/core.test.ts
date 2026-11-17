@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Injector } from '@domirror/shared';
-import { createTransformer, defaultInjectors } from '../src/core.js';
+import { createTransformer, defaultInjectors, protectedPatterns } from '../src/core.js';
 import { createDesignSystemMatcher } from '../src/design-system.js';
 import { toRelativeFile } from '../src/paths.js';
 
@@ -86,5 +86,54 @@ describe('AC-1: designSystem 판정', () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBe(isDesignSystem);
     expect(isDesignSystem({ file: 'src/ds/Button.tsx' })).toBe(true);
+  });
+});
+
+describe('AC-1: protected 판정', () => {
+  it('protected 미설정이면 designSystem 패턴을 그대로 쓴다', () => {
+    const patterns = protectedPatterns({ designSystem: ['src/ds/**'] });
+    expect(patterns).toEqual(['src/ds/**']);
+
+    const matcher = createDesignSystemMatcher(patterns);
+    expect(matcher({ file: 'src/ds/Button.tsx' })).toBe(true);
+    expect(matcher({ file: 'src/components/Card.tsx' })).toBe(false);
+  });
+
+  it('protected가 빈 배열이면 패턴 보호가 없다', () => {
+    const patterns = protectedPatterns({ designSystem: ['src/ds/**'], protected: [] });
+    expect(patterns).toEqual([]);
+
+    const matcher = createDesignSystemMatcher(patterns);
+    expect(matcher({ file: 'src/ds/Button.tsx' })).toBe(false);
+    expect(matcher({ file: 'src/components/Card.tsx' })).toBe(false);
+  });
+
+  it('protected가 designSystem보다 우선한다', () => {
+    const patterns = protectedPatterns({ protected: ['src/shared/**'] });
+    expect(patterns).toEqual(['src/shared/**']);
+
+    const matcher = createDesignSystemMatcher(patterns);
+    expect(matcher({ file: 'src/shared/Box.tsx' })).toBe(true);
+    expect(matcher({ file: 'src/ds/Button.tsx' })).toBe(false);
+  });
+
+  it('createTransformer가 같은 isProtected 참조를 ctx로 넘긴다', () => {
+    const seen: (unknown)[] = [];
+    const fake: Injector = {
+      name: 'fake',
+      test: (id) => id.endsWith('.js'),
+      transform(code, _id, ctx) {
+        seen.push(ctx.isProtected);
+        return { code, map: null };
+      },
+    };
+    const matcher = createDesignSystemMatcher(protectedPatterns({ protected: ['src/shared/**'] }));
+    const isProtected = (file: string) => matcher({ file });
+    const run = createTransformer({ root, injectors: [fake], isProtected });
+
+    run('export const a = 1;\n', '/proj/src/shared/entry.js');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(isProtected);
+    expect(isProtected('src/shared/Box.tsx')).toBe(true);
   });
 });

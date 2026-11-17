@@ -1,6 +1,6 @@
 import type { InjectResult } from '@domirror/shared';
 import type { Plugin } from 'vite';
-import { createTransformer, defaultInjectors, type DomirrorOptions } from './core.js';
+import { createTransformer, defaultInjectors, protectedPatterns, type DomirrorOptions } from './core.js';
 import { createDesignSystemMatcher } from './design-system.js';
 import { InjectError } from './inject-utils.js';
 
@@ -19,10 +19,12 @@ export default function domirror(options: DomirrorOptions = {}): Plugin {
 
     configResolved(config) {
       if (!enabled) return;
+      const protectedMatcher = createDesignSystemMatcher(protectedPatterns(options));
       transform = createTransformer({
         root: config.root,
         injectors: [...defaultInjectors, ...(options.injectors ?? [])],
         isDesignSystem: createDesignSystemMatcher(options.designSystem ?? []),
+        isProtected: (file) => protectedMatcher({ file }),
       });
       if (config.isProduction) config.logger.warn(PRODUCTION_WARNING);
     },
