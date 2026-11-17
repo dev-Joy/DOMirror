@@ -1,6 +1,34 @@
-import { DEFAULT_PORT, formatSourceLocation, type ContentToWorkerMessage, type SendResult, type StyleChangeInput } from '@domirror/shared';
+import {
+  DEFAULT_PORT,
+  formatSourceLocation,
+  type ContentToWorkerCommentsMessage,
+  type ContentToWorkerMessage,
+  type ScreenCommentInput,
+  type SendResult,
+  type StyleChangeInput,
+} from '@domirror/shared';
 import { diffLog, mergeLoaded, restoreStale, type LocalChange } from './change-log.js';
 import { ChangeSync, type LogDiff } from './change-sync.js';
+import {
+  addComment,
+  beginCommentSend,
+  commentsForPage,
+  finishCommentSend,
+  normalizeLoaded,
+  preview,
+  type LocalComment,
+} from './comment-log.js';
+import {
+  COMMENT_BODY_MAX,
+  COMMENTS_CSS,
+  createCommentForm,
+  createCommentPins,
+  renderCommentList,
+  resolveCommentElement,
+  type CommentFormControl,
+  type CommentListItem,
+  type CommentPins,
+} from './comment-ui.js';
 import { readBefore } from './css-read.js';
 import { EditTracker } from './edit-tracker.js';
 import {
@@ -17,7 +45,7 @@ import { createPicker, PICKER_CSS, type BlockedReason, type Picker } from './pic
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
 import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
-import { loadEntries, loadPort, saveEntries, savePort } from './storage.js';
+import { loadComments, loadEntries, loadPort, saveComments, saveEntries, savePort } from './storage.js';
 
 // 진입점: 아이콘 클릭으로 주입되면 즉시 활성화되고, 이후 'domirror:toggle' 메시지로 켜고 끈다.
 // 비활성화 시 이 스크립트가 만든 DOM(Shadow 호스트 1개)을 모두 제거하고 편집한 인라인 스타일을 원복한다(NFR-3).
@@ -68,10 +96,14 @@ interface Panel {
   /** 위치 표시 자리(배치 E). */
   locationSlot: HTMLElement;
   editorSlot: HTMLElement;
+  /** 코멘트 입력·목록 자리(FR-1·FR-7). */
+  commentsSlot: HTMLElement;
   changesSlot: HTMLElement;
   /** 간격 보기 토글·수치 자리(배치 G). */
   measureSlot: HTMLElement;
   setStatus(kind: StatusKind, text: string): void;
+  /** 코멘트를 서비스 워커로 보낸다(FR-3·E-5). 실패는 상태 문구로만 알린다. */
+  sendComments(ids: readonly string[]): Promise<void>;
   dispose(): void;
 }
 
@@ -82,6 +114,12 @@ interface SendHandlers {
   onSent(changes: StyleChangeInput[]): void;
   /** 응답 처리 끝(성공·실패·예외 공통): 잠금을 풀고 편집 필드·변경 목록을 다시 그린다. */
   onSendEnd(): void;
+  comments: {
+    /** `pending`·`failed` 코멘트를 `sending`으로 바꾸고 보낼 본문을 돌려준다(FR-3·E-5). */
+    beginSend(ids: readonly string[]): ScreenCommentInput[];
+    /** 응답을 코멘트 상태에 반영한다(성공 `sent`·실패 `failed`). */
+    finishSend(ids: readonly string[], result: SendResult): void;
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -92,7 +130,7 @@ function createPanel(handlers: SendHandlers): Panel {
   const host = document.createElement(HOST_TAG);
   const shadow = host.attachShadow({ mode: 'open' });
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + EDITOR_CSS + PICKER_CSS + MEASURE_CSS);
+  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + EDITOR_CSS + PICKER_CSS + MEASURE_CSS + COMMENTS_CSS);
   shadow.adoptedStyleSheets = [sheet];
 
   const panel = document.createElement('div');
@@ -102,8 +140,8 @@ function createPanel(handlers: SendHandlers): Panel {
   title.className = 'title';
   title.textContent = 'DOMirror';
 
-  // 이후 배치가 채울 빈 자리: 위치 표시(E), 편집 필드(F), 변경 목록(F), 간격 보기(G).
-  const slots = ['location', 'editor', 'changes', 'measure'].map((name) => {
+  // 이후 배치가 채울 빈 자리: 위치 표시(E), 편집 필드(F), 코멘트(FR-1·FR-7), 변경 목록(F), 간격 보기(G).
+  const slots = ['location', 'editor', 'comments', 'changes', 'measure'].map((name) => {
     const section = document.createElement('section');
     section.className = 'slot';
     section.dataset.slot = name;
@@ -129,7 +167,7 @@ function createPanel(handlers: SendHandlers): Panel {
   status.className = 'status';
   status.setAttribute('role', 'status');
 
-  const [locationSlot, editorSlot, changesSlot, measureSlot] = slots;
+  const [locationSlot, editorSlot, commentsSlot, changesSlot, measureSlot] = slots;
   renderLocation(locationSlot, { kind: 'idle' });
 
   panel.append(title, ...slots, sendRow, status);
@@ -201,6 +239,35 @@ function createPanel(handlers: SendHandlers): Panel {
   };
   const onSendClick = (): void => void onSend();
 
+  // 코멘트 전송(FR-3). 코멘트 상태·목록은 EditSession이 갖고, 여기서는 포트·메시지·상태 문구만 맡는다(E-5).
+  const sendComments = async (ids: readonly string[]): Promise<void> => {
+    if (disposed || ids.length === 0) return;
+    const port = readPort();
+    if (port === null) {
+      setStatus('error', '코멘트 전송 실패: 포트는 1~65535 사이의 정수여야 합니다');
+      return;
+    }
+    const comments = handlers.comments.beginSend(ids);
+    if (comments.length === 0) {
+      setStatus('info', '보낼 코멘트가 없습니다');
+      return;
+    }
+    const message: ContentToWorkerCommentsMessage = { type: 'domirror:send-comments', port, comments };
+    setStatus('info', `코멘트 전송 중… (127.0.0.1:${port})`);
+    let result: SendResult;
+    try {
+      const response = (await chrome.runtime.sendMessage(message)) as SendResult | undefined;
+      result = response ?? { ok: false, error: '익스텐션 응답이 없습니다' };
+    } catch (error) {
+      // 익스텐션 재로드 후 남은 스크립트 등(Extension context invalidated).
+      result = { ok: false, error: errorMessage(error) };
+    }
+    if (disposed) return;
+    handlers.comments.finishSend(ids, result);
+    if (result.ok) setStatus('ok', `코멘트 전송 완료: ${result.accepted}건`);
+    else setStatus('error', `코멘트 전송 실패 (포트 ${port}): ${result.error}`);
+  };
+
   portInput.addEventListener('change', onPortChange);
   sendButton.addEventListener('click', onSendClick);
 
@@ -209,9 +276,11 @@ function createPanel(handlers: SendHandlers): Panel {
     shadow,
     locationSlot,
     editorSlot,
+    commentsSlot,
     changesSlot,
     measureSlot,
     setStatus,
+    sendComments,
     dispose() {
       disposed = true;
       portInput.removeEventListener('change', onPortChange);
@@ -241,6 +310,15 @@ class EditSession {
   readonly #sync: ChangeSync;
   /** 편집한 요소가 HMR 등으로 교체되는지 감시한다(E-6). 패널 Shadow 내부는 관찰되지 않는다. */
   readonly #observer = new MutationObserver(() => this.#checkDetached());
+  /** 코멘트 입력 폼(1회 마운트, FR-1). */
+  readonly #commentForm: CommentFormControl;
+  /** 화면 위 코멘트 핀(FR-6). */
+  readonly #pins: CommentPins;
+  /** 목록 영역. 핀은 패널 Shadow root에 그린다. */
+  readonly #commentList: HTMLElement;
+  #comments: LocalComment[] = [];
+  /** 저장을 순서대로 실행한다(전송 시작·끝 상태가 연달아 저장된다). */
+  #saveQueue: Promise<void> = Promise.resolve();
   #selected: Element | null = null;
   #log: LocalChange[] = [];
   #disposed = false;
@@ -255,6 +333,33 @@ class EditSession {
     );
     this.#observer.observe(document.documentElement, { childList: true, subtree: true });
     this.#renderChanges();
+
+    // 코멘트 UI는 1회 마운트하고, 이후에는 상태만 갱신한다(초안·커서 유지).
+    const box = document.createElement('div');
+    box.className = 'comment-box';
+    const formHost = document.createElement('div');
+    this.#commentList = document.createElement('div');
+    box.append(formHost, this.#commentList);
+    panel.commentsSlot.replaceChildren(box);
+    this.#commentForm = createCommentForm(formHost, { onSubmit: (body) => this.#submitComment(body) });
+    this.#pins = createCommentPins(panel.shadow, {
+      onElementChange: () => this.#renderComments(),
+      onPageChange: () => this.#renderComments(),
+    });
+    this.#renderCommentForm();
+
+    // Q1=A: origin별 로컬 보관분을 복원한다. 손상 항목은 normalizeLoaded가 버린다.
+    loadComments<unknown>(origin)
+      .then((entries) => {
+        if (this.#disposed) return;
+        // 불러오기 전에 이미 작성한 코멘트가 우선한다(같은 id는 현재 것만 남긴다).
+        const currentIds = new Set(this.#comments.map((c) => c.id));
+        this.#comments = [...normalizeLoaded(entries).filter((c) => !currentIds.has(c.id)), ...this.#comments];
+        this.#renderComments();
+        this.#renderCommentForm();
+      })
+      .catch((error: unknown) => this.#panel.setStatus('error', `코멘트를 불러오지 못했습니다: ${errorMessage(error)}`));
+
     loadEntries<unknown>(origin)
       .then((entries) => {
         if (this.#disposed) return;
@@ -273,6 +378,7 @@ class EditSession {
     const sameSource = located ? countSameSource(formatSourceLocation(located.location)) : 0;
     renderLocation(this.#panel.locationSlot, { kind: 'selected', hint: selectorHint(el), located, sameSource, component });
     this.#renderEditor();
+    this.#renderCommentForm();
   }
 
   blocked(reason: BlockedReason): void {
@@ -280,6 +386,7 @@ class EditSession {
     this.#highlight.set(null);
     renderLocation(this.#panel.locationSlot, { kind: 'blocked', reason });
     this.#renderEditor();
+    this.#renderCommentForm();
   }
 
   collect(): { changes: StyleChangeInput[]; excluded: number } {
@@ -301,10 +408,24 @@ class EditSession {
     this.#renderControls();
   }
 
+  /** 코멘트 전송 시작: 보낼 본문을 돌려주고 상태를 `sending`으로 바꾼다(FR-3). */
+  beginCommentSend(ids: readonly string[]): ScreenCommentInput[] {
+    const { list, payload } = beginCommentSend(this.#comments, ids);
+    if (payload.length > 0) this.#setComments(list);
+    return payload;
+  }
+
+  /** 코멘트 전송 결과 반영(성공 `sent`·실패 `failed` + 재전송 버튼, E-5). */
+  finishCommentSend(ids: readonly string[], result: SendResult): void {
+    if (this.#disposed) return;
+    this.#setComments(finishCommentSend(this.#comments, ids, result));
+  }
+
   dispose(): void {
     this.#disposed = true;
     this.#observer.disconnect();
     this.#highlight.dispose();
+    this.#pins.dispose();
     // 페이지 표시는 원복하고 내역은 저장소에 남긴다(NFR-3·E-6).
     this.#tracker.restoreAll();
   }
@@ -410,6 +531,106 @@ class EditSession {
       this.#tracker.sending,
     );
   }
+
+  /** 코멘트 작성(FR-1·FR-2·E-1·E-7). 작성 즉시 전송을 시작한다(FR-3·D-S2). */
+  #submitComment(body: string): void {
+    if (this.#disposed) return;
+    const el = this.#selected;
+    if (!el) {
+      this.#panel.setStatus('error', '코멘트를 남길 요소를 먼저 선택하세요.');
+      this.#renderCommentForm();
+      return;
+    }
+    if (!el.isConnected) {
+      this.#panel.setStatus('error', '선택한 요소가 페이지에서 사라졌습니다. 다시 선택하세요.');
+      this.#renderCommentForm();
+      return;
+    }
+    const text = body.trim();
+    if (text.length === 0 || text.length > COMMENT_BODY_MAX) {
+      this.#panel.setStatus('error', `코멘트는 1~${COMMENT_BODY_MAX}자여야 합니다.`);
+      this.#renderCommentForm();
+      return;
+    }
+    const located = locate(el);
+    if (!located) {
+      // E-1: 소스 위치가 없으면 고정 기준을 잃으므로 작성을 막는다.
+      this.#panel.setStatus('error', '소스 위치 없음: 이 요소와 조상에 data-domirror 속성이 없어 코멘트를 남길 수 없습니다.');
+      this.#renderCommentForm();
+      return;
+    }
+    const comment: LocalComment = {
+      id: newId(),
+      source: { ...located.location, inherited: located.inherited },
+      selectorHint: selectorHint(el),
+      pageUrl: location.href,
+      body: text,
+      createdAt: new Date().toISOString(),
+      send: 'pending',
+    };
+    this.#commentForm.clear();
+    this.#setComments(addComment(this.#comments, comment));
+    this.#panel.setStatus('info', `코멘트를 추가했습니다: ${preview(text)}`);
+    void this.#panel.sendComments([comment.id]);
+  }
+
+  #setComments(next: LocalComment[]): void {
+    this.#comments = next;
+    this.#renderComments();
+    this.#renderCommentForm();
+    this.#saveComments();
+  }
+
+  #saveComments(): void {
+    const snapshot = this.#comments;
+    this.#saveQueue = this.#saveQueue
+      .then(() => saveComments(this.#origin, snapshot))
+      .catch((error: unknown) => {
+        this.#panel.setStatus('error', `코멘트를 저장하지 못했습니다: ${errorMessage(error)}`);
+      });
+  }
+
+  /** 현재 페이지 코멘트 목록(FR-7·E-2·E-4·E-9)과 핀 집합을 갱신한다. */
+  #renderComments(): void {
+    if (this.#disposed) return;
+    const page = commentsForPage(this.#comments, location.href);
+    const items: CommentListItem[] = page.map((c, index) => ({
+      id: c.id,
+      number: index + 1,
+      where: formatSourceLocation(c.source),
+      inherited: c.source.inherited,
+      preview: preview(c.body),
+      missing: resolveCommentElement(c) === null,
+      sameSource: countSameSource(formatSourceLocation(c.source)),
+      send: c.send,
+      error: c.error,
+    }));
+    renderCommentList(this.#commentList, items, { onResend: (id) => void this.#panel.sendComments([id]) });
+    this.#pins.update(page);
+  }
+
+  /** 선택·전송 상태로 작성 가능 여부를 정한다(FR-1·E-1·E-7). */
+  #renderCommentForm(): void {
+    if (this.#disposed) return;
+    const el = this.#selected;
+    const sending = this.#comments.some((c) => c.send === 'sending');
+    if (!el) {
+      this.#commentForm.setState({ canSubmit: false, hint: '페이지에서 요소를 클릭해 선택하면 코멘트를 남길 수 있습니다.' });
+      return;
+    }
+    if (!el.isConnected) {
+      this.#commentForm.setState({ canSubmit: false, hint: '선택한 요소가 페이지에서 사라졌습니다. 다시 선택하세요.' });
+      return;
+    }
+    if (!locate(el)) {
+      this.#commentForm.setState({
+        canSubmit: false,
+        hint: '소스 위치 없음: data-domirror 속성이 있는 요소를 선택해야 코멘트를 남길 수 있습니다.',
+      });
+      return;
+    }
+    this.#commentForm.setState({ canSubmit: true, disabled: sending, hint: sending ? '코멘트 전송 중…' : undefined });
+  }
 }
 
 let panel: Panel | null = null;
@@ -426,6 +647,10 @@ function activate(): void {
     collect: () => current.collect(),
     onSent: (changes) => current.onSent(changes),
     onSendEnd: () => current.onSendEnd(),
+    comments: {
+      beginSend: (ids) => current.beginCommentSend(ids),
+      finishSend: (ids, result) => current.finishCommentSend(ids, result),
+    },
   });
   const current = new EditSession(currentPanel);
   panel = currentPanel;

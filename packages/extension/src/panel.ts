@@ -43,7 +43,7 @@ const BLOCKED_TEXT: Record<BlockedReason, string> = {
   iframe: 'iframe 내부 요소는 선택할 수 없습니다.',
 };
 
-function line(className: string, text: string): HTMLParagraphElement {
+export function line(className: string, text: string): HTMLParagraphElement {
   const p = document.createElement('p');
   p.className = className;
   p.textContent = text;
@@ -171,7 +171,7 @@ export interface ChangesHandlers {
   onRevertAll(): void;
 }
 
-function button(text: string, onClick: () => void, disabled = false): HTMLButtonElement {
+export function button(text: string, onClick: () => void, disabled = false): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.textContent = text;

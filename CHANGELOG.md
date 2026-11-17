@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.38] - 2026-11-17
+
+### Added
+
+- 패널 코멘트 입력·목록(번호·소스 위치·전송 상태·재전송·상속/요소 없음 배지)과 화면 번호 핀·툴팁 표시(단일 rAF 추적)
+- `chrome.storage.local` origin별 코멘트 보관·활성화 시 복원, 코멘트 전송 상태 로직과 단위 테스트
+
+### Changed
+
+- `storage` 목록 로드·저장 공통부 추출(기존 변경 내역 저장 동작 유지), `panel` 렌더 헬퍼 공개
+
 ## [0.1.37] - 2026-11-17
 
 ### Added
