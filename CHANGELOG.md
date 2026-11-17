@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.42] - 2026-11-17
+
+### Fixed
+
+- README 코멘트 복원 문구에 패널 재활성화 전제를 명시하고, 여러 탭 안내를 "동시에 작성"으로 정정
+
 ## [0.1.41] - 2026-11-17
 
 ### Fixed
