@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.21] - 2026-11-17
+
+### Changed
+
+- INT-004 spec §3·§4·§8을 oxc-parser `module.staticImports`·Vue `tagType` 실측 결과에 맞게 보강하고 AC-5·AC-8 단언 방식을 구체화
+
 ## [0.1.20] - 2026-11-17
 
 ### Added

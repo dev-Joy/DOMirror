@@ -53,11 +53,11 @@
   - 기존 속성 검사: `:38-41`
   - 지금의 Visitor는 `JSXOpeningElement`만 처리한다(`:31-48`).
   - Visitor는 `"<Node>:exit"` 콜백을 지원한다. 근거: `oxc-parser` `src-js/generated/visit/visitor.d.ts:8`
-  - `parseSync` 결과의 `staticImports`(`src-js/index.d.ts:76`)는 지금 쓰지 않는다.
+  - `parseSync` 결과의 정적 import는 `parsed.module.staticImports`(`src-js/index.d.ts:76`)에서 읽는다. 각 엔트리는 `{ moduleRequest: { value }, entries: [{ importName: { kind: 'Default'|'Name'|'NamespaceObject', name }, localName: { value }, isType }] }` 형태다. 지금은 쓰지 않는다.
 - Vue 주입기: `packages/plugin/src/injectors/vue.ts:55` `vueInjector`
   - `@vue/compiler-sfc`를 동적으로 로드한다(`:32`).
   - `sfc.parse`: `:69`
-  - 네이티브 요소 판정: `:82` `node.tagType === ELEMENT_NATIVE`. `ELEMENT_NATIVE = 0`(`:14`)이다.
+  - 네이티브 요소 판정: `:82` `node.tagType === ELEMENT_NATIVE`. `ELEMENT_NATIVE = 0`(`:14`)이다. 컴포넌트는 ELEMENT_COMPONENT = 1, slot 2, template 3이다(@vue/compiler-core compiler-core.d.ts:182).
   - 삽입: `:88`
   - 컴포넌트·`<template>`·`<slot>`은 제외하되 자식 순회는 계속한다(`:95`).
 - 속성 문자열: `packages/plugin/src/inject-utils.ts:7-9`
@@ -143,6 +143,7 @@
   - 그 specifier가 FR-1 (b)와 일치한다.
   - 매핑 방법
     - React: `parseSync` 결과의 `staticImports`를 쓴다. `UI.Button`이면 네임스페이스 로컬 이름 `UI`를 기준으로 매핑한다.
+    - React의 JSXMemberExpression은 루트 로컬 이름으로 import를 찾고 태그 이름은 점 표기 그대로 쓴다(예: UI.Button).
     - Vue: `descriptor.scriptSetup`과 `script` 내용을 `oxc-parser`로 파싱한 정적 import를 쓴다. 태그 이름은 kebab-case를 PascalCase로 바꿔 매핑한다.
   - 이 조건에 맞지 않는 컴포넌트 태그에는 아무것도 넣지 않는다. 즉 `README.md:272`의 기존 동작을 유지한다.
   - 같은 이름 속성이 태그에 이미 있으면 건너뛴다.
@@ -165,6 +166,7 @@
   - 배지 색은 FR-8과 같다.
   - 정보가 없으면 `컴포넌트 정보 없음`을 흐리게 표시한다.
   - 선택 흐름 `content.ts:271-273`에서 `locateComponent` 결과를 `LocationView`의 `selected` 변형에 선택 필드로 전달한다.
+  - located가 null이어도 컴포넌트 정보가 있으면 같은 줄을 표시한 뒤 기존 경고 문구를 붙인다(패키지형 DS 사용처 측 주입, E-1).
 - **FR-10 경고 문구**: `vite.ts:8` `PRODUCTION_WARNING`을 "소스 위치·컴포넌트 정보"를 주입한다는 문구로 바꾼다.
   - `vite.plugin.test.ts:141`의 단언도 함께 갱신한다.
   - 경고 조건(`vite.ts:25`)은 바꾸지 않는다.
@@ -236,18 +238,14 @@
   - React의 `import { Button } from '@acme/ui'`와 `<Button/>`, Vue의 `<acme-button>`(script setup import)에 사용처 측 속성이 들어간다.
   - DS가 아닌 import와 import가 없는 태그에는 들어가지 않는다.
 - **AC-5 (NFR-1·NFR-2)**: `vite.integration.test.ts`의 `enabled:false` 0건 단언에 새 속성 두 개를 추가하고 통과한다. 산출물에서 절대 경로 검색 결과가 0건이다.
+  - 절대 경로 0건은 data-domirror-component 값의 source 부분이 '/'·'C:\'로 시작하지 않고 빌드 루트 절대 경로를 포함하지 않는 것으로 단언한다.
 - **AC-6 (FR-6·FR-7·E-9)**: shared의 format/parse와 `locateComponent` 단위 테스트(fake-element)가 통과한다. 대상은 정상값, 깨진 값 건너뛰기, 속성 없음 null이다.
 - **AC-7 (FR-8·FR-9)**: React 예제(5173)와 Vue 예제(5174) dev 서버에서 브라우저 도구로 다음을 확인한다.
   - `src/ds/` 컴포넌트 요소 호버 시 초록 라벨 `Button · DS`가 보인다.
   - `Card` 요소 호버 시 회색 라벨 `Card`가 보인다.
   - 선택 시 패널에 `컴포넌트:`·`정의:` 줄이 보인다.
   - 콘솔 에러는 0건이다.
-- **AC-8 (FR-10·NFR-5)**: 다음 명령이 모두 Exit 0이다.
-  - `pnpm test`
-  - `pnpm lint`
-  - `pnpm typecheck`
-  - `pnpm build`
-  - 기존 react·vue 주입 테스트의 위치 단언은 변경 없이 통과한다.
+- **AC-8 (FR-10·NFR-5)**: `pnpm test`·`pnpm lint`·`pnpm typecheck`·`pnpm build`가 Exit 0이다. 기존 react·vue 주입 테스트의 위치 값(파일:라인:컬럼)은 그대로 유지되고, 새 속성이 사이에 들어가는 부분 문자열·개수 단언만 확장한다(`/data-domirror="/g` 기준).
 - **AC-9 (FR-11·FR-12·NFR-3)**: 다음을 모두 확인한다.
   - README에 `designSystem`, `data-domirror-component`, `data-domirror-ds`가 있다(`rg -n`).
   - 예제 `vite.config.ts`에 `designSystem`이 있다.
