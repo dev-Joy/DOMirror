@@ -1,7 +1,8 @@
 import { formatSourceLocation } from '@domirror/shared';
 import { originalValue, type LocalChange } from './change-log.js';
 import type { BlockedReason } from './picker.js';
-import { EDITABLE_PROPERTIES, PROPERTY_GROUP_LABELS, type PropertyGroup } from './properties.js';
+import { parsePickerColor } from './color.js';
+import { EDITABLE_PROPERTIES, PROPERTY_GROUP_LABELS, containerOf, type PropertyGroup } from './properties.js';
 import type { Located, LocatedComponent } from './source-locator.js';
 
 // 패널의 위치 표시(FR-5)·편집 필드(FR-6)·변경 목록(FR-7·8) 영역과 선택 요소 강조.
@@ -101,6 +102,10 @@ export const EDITOR_CSS = `
 .editor .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
 .editor label { display: flex; flex-direction: column; min-width: 0; font-size: 11px; color: #59636e; }
 .editor input { box-sizing: border-box; width: 100%; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.editor select { box-sizing: border-box; width: 100%; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.editor .color-row { display: flex; gap: 4px; }
+.editor .color-row input[type="text"] { flex: 1; min-width: 0; }
+.editor input[type="color"] { flex: none; width: 28px; padding: 0; }
 .changes { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid #d0d4da; }
 .changes .head { display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px; font-weight: 600; }
 .changes ul { list-style: none; margin: 0; padding: 0; }
@@ -112,7 +117,7 @@ export const EDITOR_CSS = `
 .changes .warn { color: #9a6700; font-size: 11px; }
 .changes .muted { color: #59636e; }
 .changes button { font: inherit; font-size: 12px; cursor: pointer; }
-.editor input:disabled, .changes button:disabled { cursor: progress; }
+.editor input:disabled, .editor select:disabled, .changes button:disabled { cursor: progress; }
 .selected-outline {
   position: fixed;
   box-sizing: border-box;
@@ -143,7 +148,12 @@ export function renderEditor(
   box.className = 'editor';
   let grid: HTMLDivElement | null = null;
   let group: PropertyGroup | null = null;
-  for (const { name, group: g } of EDITABLE_PROPERTIES) {
+  // 컨테이너 조건 속성은 선택 요소 display가 해당 종류일 때만 그린다(FR-5·FR-6).
+  const layoutContainer = containerOf(values.display);
+  const visible = EDITABLE_PROPERTIES.filter(
+    (p) => !p.containers || (layoutContainer !== null && p.containers.includes(layoutContainer)),
+  );
+  for (const { name, group: g, options } of visible) {
     if (g !== group || !grid) {
       group = g;
       box.append(line('group', PROPERTY_GROUP_LABELS[g]));
@@ -153,14 +163,48 @@ export function renderEditor(
     }
     const label = document.createElement('label');
     label.textContent = name;
+    const current = values[name] ?? '';
+    if (options) {
+      // 키워드 선택지는 select로 그리고, 선택지에 없는 현재 값은 맨 앞에 둔다(FR-7·FR-10).
+      const select = document.createElement('select');
+      select.dataset.property = name;
+      select.disabled = disabled;
+      if (!options.includes(current)) select.append(new Option(current, current));
+      for (const v of options) select.append(new Option(v, v));
+      select.value = current;
+      select.addEventListener('change', () => handlers.onEdit(name, select.value));
+      label.append(select);
+      grid.append(label);
+      continue;
+    }
     const input = document.createElement('input');
     input.type = 'text';
     input.dataset.property = name;
-    input.value = values[name] ?? '';
+    input.value = current;
     input.spellcheck = false;
     input.disabled = disabled;
     input.addEventListener('change', () => handlers.onEdit(name, input.value));
-    label.append(input);
+    if (g === 'color') {
+      // 색 필드는 텍스트 입력 옆에 피커를 둔다. 변환 불가 값은 #000000(FR-1~FR-3·FR-10).
+      const parsed = parsePickerColor(current);
+      const picker = document.createElement('input');
+      picker.type = 'color';
+      picker.dataset.property = name;
+      picker.value = parsed?.hex ?? '#000000';
+      picker.disabled = disabled;
+      if (parsed && parsed.alpha < 1) picker.title = '알파 값은 텍스트로 편집하세요(피커는 불투명 색만 지원)';
+      // Q-1=(a): 피커 확정(change) 시에만 반영한다.
+      picker.addEventListener('change', () => {
+        input.value = picker.value;
+        handlers.onEdit(name, picker.value);
+      });
+      const row = document.createElement('span');
+      row.className = 'color-row';
+      row.append(input, picker);
+      label.append(row);
+    } else {
+      label.append(input);
+    }
     grid.append(label);
   }
   container.replaceChildren(box);
