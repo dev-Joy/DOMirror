@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.20] - 2026-11-17
+
+### Added
+
+- INT-003·INT-005~INT-008 요구사항 문서를 planned로 등록하고 INBOX 아이디어를 DONE으로 승격 기록
+- 공통 자산 카탈로그 docs/code-asset-index/COMPONENTS.md 추가
+
+### Changed
+
+- INT-004를 planned에서 active로 전이하고 태스크 T-01~T-08로 분해, spec·plan `Intent updated_at` 동기화
+
 ## [0.1.19] - 2026-11-17
 
 ### Fixed
