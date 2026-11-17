@@ -2,6 +2,19 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.61] - 2026-11-18
+
+### Added
+
+- INT-009 CSS 편집 패널 색 필드에 컬러 피커 추가(`parsePickerColor`, 피커 `change` 시 1회 기록, 알파 1 미만 안내 툴팁)
+- INT-009 레이아웃 그룹 추가: `display`·`flex-direction`·`flex-wrap`·`justify-content`·`align-items`·`align-content`·`grid-template-columns`·`grid-template-rows`·`row-gap`·`column-gap` (키워드 속성은 select, flex/grid 컨테이너일 때만 표시)
+
+### Changed
+
+- display 편집 성공 시 편집기를 다시 그려 레이아웃 필드 구성을 즉시 갱신
+- INT-009 spec·plan 교정, 완료 전이와 `result.md` 기록
+- 코드 자산 인덱스 재생성(14 → 25건)
+
 ## [0.1.53] - 2026-11-18
 
 ### Changed
