@@ -19,6 +19,7 @@ export const StyleChangeInputSchema = z.object({
     line: PositiveInt,
     column: PositiveInt,
     inherited: z.boolean(),
+    protected: z.boolean().optional(),
   }),
   selectorHint: z.string(),
   property: z.string().min(1),
@@ -34,6 +35,16 @@ export const StyleChangeInputSchema = z.object({
 export const StyleChangeSchema = StyleChangeInputSchema.extend({
   status: z.enum(['pending', 'applied']),
 }) satisfies z.ZodType<StyleChange>;
+
+export const ProtectedAreaWarningSchema = z.object({
+  code: z.literal('protected-area'),
+  reason: z.enum(['pattern', 'node_modules']),
+  message: z.string(),
+});
+
+export const PendingChangeSchema = StyleChangeSchema.extend({
+  warning: ProtectedAreaWarningSchema.optional(),
+});
 
 export const PostChangesRequestSchema = z.object({
   changes: z.array(StyleChangeInputSchema),

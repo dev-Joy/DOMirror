@@ -2,7 +2,8 @@ import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { CommentStore } from './comment-store.js';
-import { ScreenCommentSchema, StyleChangeSchema } from './schema.js';
+import { withProtectionWarning } from './protection.js';
+import { PendingChangeSchema, ScreenCommentSchema } from './schema.js';
 import type { ChangeStore } from './store.js';
 
 export const SERVER_NAME = 'domirror';
@@ -27,11 +28,12 @@ export function createMcpFactory(store: ChangeStore, commentStore: CommentStore)
         title: 'List pending style changes',
         description:
           'Returns style changes edited in the browser that are not yet applied to source. ' +
-          'Each change has the source location (file:line:column), CSS property, before value and new value.',
-        outputSchema: z.object({ changes: z.array(StyleChangeSchema) }),
+          'Each change has the source location (file:line:column), CSS property, before value and new value. ' +
+          'Changes whose source is in a protected area (shared component or design system source) carry a warning field; confirm with the user before editing the original.',
+        outputSchema: z.object({ changes: z.array(PendingChangeSchema) }),
         annotations: { readOnlyHint: true },
       },
-      () => jsonResult({ changes: store.listPending() }),
+      () => jsonResult({ changes: store.listPending().map(withProtectionWarning) }),
     );
 
     server.registerTool(
