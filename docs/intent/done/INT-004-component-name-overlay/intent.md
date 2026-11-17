@@ -1,11 +1,11 @@
 ---
 id: INT-004
 title: 화면에 컴포넌트 이름 표시 (디자인 시스템 컴포넌트 사용 여부 확인)
-status: active
+status: done
 priority: P2
 created: 2026-11-17
 updated: 2026-11-17
-updated_at: 2026-11-17T16:22:52+09:00
+updated_at: 2026-11-17T19:48:02+09:00
 ---
 
 # Intent: 화면에 컴포넌트 이름 표시 (디자인 시스템 컴포넌트 사용 여부 확인)
@@ -56,3 +56,8 @@ updated_at: 2026-11-17T16:22:52+09:00
 - [x] T-06 [P2] 익스텐션: locateComponent·호버 라벨·패널 줄/배지·content.ts 전달·CSS 결합 (plan Step 7) (2026-11-17)
 - [x] T-07 [P2] 예제: React/Vue src/ds/Button·사용처·vite.config designSystem (plan Step 8) (2026-11-17)
 - [x] T-08 [P2] README: 옵션 표·주입 대상·알려진 한계·체크리스트 갱신 (plan Step 9) (2026-11-17)
+
+## 결과
+- 완료일: 2026-11-17. 빌드 시 `data-domirror-component`·`data-domirror-ds` 주입(React 함수 스택·Vue basename, `designSystem` glob/specifier 판별), 익스텐션 호버 라벨·패널 컴포넌트 줄·DS 배지, 예제·README 갱신.
+- Tier 3 전수 검증 Pass(AC-1~AC-9), 정합성 게이트 필수(하드) 2-pass `PASS_WITH_NOTES`(비차단 NOTE만).
+상세: [result.md](result.md)
