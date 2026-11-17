@@ -42,6 +42,7 @@ import {
 } from './panel.js';
 import { createMeasureOverlay, MEASURE_CSS, type MeasureOverlay } from './overlay.js';
 import { createPicker, PICKER_CSS, type BlockedReason, type Picker } from './picker.js';
+import { buildPrompt, type PromptInput } from './prompt.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
 import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
@@ -78,7 +79,7 @@ const PANEL_CSS = `
 }
 .title { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
 .slot:empty { display: none; }
-.send { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.send { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; row-gap: 6px; }
 .send label { display: flex; gap: 4px; align-items: center; }
 .send input { width: 72px; font: inherit; }
 .send button { font: inherit; cursor: pointer; }
@@ -114,6 +115,8 @@ interface SendHandlers {
   onSent(changes: StyleChangeInput[]): void;
   /** 응답 처리 끝(성공·실패·예외 공통): 잠금을 풀고 편집 필드·변경 목록을 다시 그린다. */
   onSendEnd(): void;
+  /** 복사할 프롬프트 입력. 변경 내역이 있으면 그것, 없으면 선택 요소, 둘 다 없으면 null(FR-4). */
+  promptInput(): PromptInput | null;
   comments: {
     /** `pending`·`failed` 코멘트를 `sending`으로 바꾸고 보낼 본문을 돌려준다(FR-3·E-5). */
     beginSend(ids: readonly string[]): ScreenCommentInput[];
@@ -124,6 +127,36 @@ interface SendHandlers {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 클립보드 쓰기(NFR-3). `writeText`를 먼저 시도하고, 없거나 거부되면 Shadow root 안의 임시 textarea로 폴백한다.
+ * 폴백도 실패하면 예외를 던져 호출 측이 `error` 상태로 알린다(E-4).
+ */
+async function copyText(text: string, root: ShadowRoot): Promise<void> {
+  const clip = navigator.clipboard;
+  if (clip && typeof clip.writeText === 'function') {
+    try {
+      await clip.writeText(text);
+      return;
+    } catch {
+      // 비보안 출처 등에서 거부되면 폴백(NFR-3)
+    }
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;';
+  const previous = document.activeElement;
+  root.append(area);
+  try {
+    area.select();
+    area.setSelectionRange(0, area.value.length);
+    if (!document.execCommand('copy')) throw new Error('브라우저가 복사를 거부했습니다');
+  } finally {
+    area.remove();
+    if (previous instanceof HTMLElement) previous.focus();
+  }
 }
 
 function createPanel(handlers: SendHandlers): Panel {
@@ -161,7 +194,11 @@ function createPanel(handlers: SendHandlers): Panel {
   const sendButton = document.createElement('button');
   sendButton.type = 'button';
   sendButton.textContent = '에이전트에 보내기';
-  sendRow.append(portLabel, sendButton);
+  // 복사는 내역을 바꾸지 않으므로 전송 중에도 누를 수 있게 유휴(disabled) 상태로 만들지 않는다(FR-1).
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.textContent = 'AI 프롬프트 복사';
+  sendRow.append(portLabel, sendButton, copyButton);
 
   const status = document.createElement('p');
   status.className = 'status';
@@ -239,6 +276,29 @@ function createPanel(handlers: SendHandlers): Panel {
   };
   const onSendClick = (): void => void onSend();
 
+  // AI 프롬프트 복사(FR-1·FR-4·FR-8). 읽기 전용이라 내역·저장소·전송 상태를 바꾸지 않는다(FR-9).
+  const onCopy = async (): Promise<void> => {
+    const input = handlers.promptInput();
+    if (!input) {
+      setStatus('info', '복사할 내용이 없습니다 — 요소를 선택하거나 값을 편집하세요');
+      return;
+    }
+    // 버튼을 누른 시점의 스냅샷으로 만든다(E-5).
+    const text = buildPrompt(input);
+    try {
+      await copyText(text, shadow);
+      if (input.kind === 'changes') {
+        const missing = input.changes.filter((c) => c.source === null).length;
+        setStatus('ok', `프롬프트를 복사했습니다: 변경 ${input.changes.length}건(위치 미확인 ${missing}건)`);
+      } else {
+        setStatus('ok', '프롬프트를 복사했습니다: 선택 요소 위치');
+      }
+    } catch (error) {
+      setStatus('error', `복사 실패: ${errorMessage(error)}`);
+    }
+  };
+  const onCopyClick = (): void => void onCopy();
+
   // 코멘트 전송(FR-3). 코멘트 상태·목록은 EditSession이 갖고, 여기서는 포트·메시지·상태 문구만 맡는다(E-5).
   const sendComments = async (ids: readonly string[]): Promise<void> => {
     if (disposed || ids.length === 0) return;
@@ -270,6 +330,7 @@ function createPanel(handlers: SendHandlers): Panel {
 
   portInput.addEventListener('change', onPortChange);
   sendButton.addEventListener('click', onSendClick);
+  copyButton.addEventListener('click', onCopyClick);
 
   return {
     host,
@@ -285,6 +346,7 @@ function createPanel(handlers: SendHandlers): Panel {
       disposed = true;
       portInput.removeEventListener('change', onPortChange);
       sendButton.removeEventListener('click', onSendClick);
+      copyButton.removeEventListener('click', onCopyClick);
       host.remove();
     },
   };
@@ -396,6 +458,17 @@ class EditSession {
     // 보낼 항목이 있으면 tracker가 잠근다. 편집 필드·되돌리기 버튼을 비활성 상태로 다시 그린다.
     if (this.#tracker.sending) this.#renderControls();
     return { changes, excluded: this.#log.length - changes.length };
+  }
+
+  /**
+   * 복사할 프롬프트 입력(FR-2·FR-3·FR-4). 변경 내역이 1건 이상이면 내역 전체(위치 없는 항목 포함),
+   * 없으면 선택 요소의 위치 정보, 둘 다 없으면 null이다. 선택 요소의 연결 여부는 따로 보지 않는다(E-6).
+   */
+  promptInput(): PromptInput | null {
+    if (this.#log.length > 0) return { kind: 'changes', changes: [...this.#log] };
+    const el = this.#selected;
+    if (!el) return null;
+    return { kind: 'selection', selection: { hint: selectorHint(el), located: locate(el), pageUrl: location.href } };
   }
 
   /** 전송 성공 정산: 보낸 항목을 내역에서 뺀다. 잠금은 onSendEnd가 푼다. */
@@ -652,6 +725,7 @@ function activate(): void {
     collect: () => current.collect(),
     onSent: (changes) => current.onSent(changes),
     onSendEnd: () => current.onSendEnd(),
+    promptInput: () => current.promptInput(),
     comments: {
       beginSend: (ids) => current.beginCommentSend(ids),
       finishSend: (ids, result) => current.finishCommentSend(ids, result),

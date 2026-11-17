@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.44] - 2026-11-17
+
+### Added
+
+- 익스텐션 패널에 "AI 프롬프트 복사" 버튼과 한국어 마크다운 프롬프트 생성 모듈(`prompt.ts`) 추가 (INT-006)
+- 프롬프트 생성 단위 테스트 19케이스 추가
+
+### Changed
+
+- README에 AI 프롬프트 복사 사용법 1단락 추가
+
 ## [0.1.43] - 2026-11-17
 
 ### Changed
