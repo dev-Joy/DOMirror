@@ -1,11 +1,11 @@
 ---
 id: INT-007
 title: 수정 금지 영역(공통 컴포넌트·디자인 시스템 원본) 수정 경고 하네스
-status: planned
+status: done
 priority: P2
 created: 2026-11-17
-updated: 2026-11-17
-updated_at: 2026-11-17T16:00:20+09:00
+updated: 2026-11-18
+updated_at: 2026-11-18T00:27:27+09:00
 ---
 
 # Intent: 수정 금지 영역(공통 컴포넌트·디자인 시스템 원본) 수정 경고 하네스
@@ -47,4 +47,14 @@ updated_at: 2026-11-17T16:00:20+09:00
 - [x] 수정 금지 영역의 요소를 고치고 싶을 때 대안 안내(사용처 쪽 덮어쓰기 등)까지 포함하는가? → 답변: 경고에 고정 안내 1줄 포함(사용처 쪽 스타일 덮어쓰기 또는 원본 수정 여부를 사용자에게 확인) (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [x] T-01 [P2] shared: `DOMIRROR_PROTECTED_ATTR` 상수·`InjectorContext.isProtected?`·`StyleChange.source.protected?`·`ProtectedAreaWarning`/`PendingChange` 타입 (plan Step 1) (2026-11-17)
+- [x] T-02 [P2] plugin core: 옵션 `protected`·`designSystem` 폴백·`protectedPatterns`·`isProtected` 배선·`protectedAttributeText`·AC-1 테스트 (plan Step 2) (2026-11-17)
+- [x] T-03 [P2] React·Vue 주입기: 정의 측 `data-domirror-protected` 주입·사용처 측 미주입·중복 방지·AC-2/AC-3 테스트 (plan Step 3) (2026-11-17)
+- [x] T-04 [P2] 익스텐션: `Located.protected`(위치 제공 요소 기준)·`content.ts`에서 `source.protected` 전달·AC-4 테스트 (plan Step 4) (2026-11-17)
+- [x] T-05 [P2] 서버: zod 스키마 확장·`protection.ts` `withProtectionWarning`·`outputSchema`·description·핸들러·AC-5 테스트 (plan Step 5) (2026-11-17)
+- [x] T-06 [P2] README: 옵션 표·MCP 도구 표·`StyleChange` 필드·알려진 한계 4개 지점 (plan Step 6) (2026-11-17)
+
+## 결과
+- 완료일: 2026-11-18. 플러그인이 보호 대상 정의 측 요소에 `data-domirror-protected`를 주입(React·Vue)하고 익스텐션이 `source.protected`로 전달, 서버 `list_pending_changes`가 선택 필드 `warning`(패턴·`node_modules` 사유 + 고정 안내 1줄)을 응답. 차단 없음.
+- Tier 3 전수 검증 Pass(26파일/317케이스, AC-1~AC-7 Pass·AC-8 대체 경로 Pass), 정합성 게이트 필수(하드) 2-pass `PASS_WITH_NOTES`(비차단 NOTE만).
+상세: [result.md](result.md)

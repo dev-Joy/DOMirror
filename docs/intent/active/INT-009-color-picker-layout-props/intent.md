@@ -1,10 +1,10 @@
 ---
 id: INT-009
 title: CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집
-status: planned
+status: active
 priority: P2
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-18
 updated_at: 2026-11-17T23:59:16+09:00
 ---
 
@@ -50,4 +50,7 @@ updated_at: 2026-11-17T23:59:16+09:00
 - [x] 목록 외 속성을 이름 직접 입력으로 추가하는 자유 입력을 허용하는가? / 컬러 피커와 레이아웃을 별도 intent로 분해하는가? → 답변: 자유 입력 제외(필요 시 INBOX 아이디어), 분해 없이 1개 유지 (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [ ] T-01 [P2] 색 변환 모듈 `color.ts`와 `color.test.ts` (plan Step 2·4, AC-1)
+- [ ] T-02 [P2] 레이아웃 속성 정의(`properties.ts`)와 `properties.test.ts` (plan Step 3·4, AC-2·AC-3)
+- [ ] T-03 [P2] 패널 컬러 피커·select·flex/grid 조건부 표시(`panel.ts`) (plan Step 5, FR-1~FR-10) (depends: T-01, T-02)
+- [ ] T-04 [P2] 빌드·브라우저 실측 (plan Step 6, AC-4~AC-7) (depends: T-03)

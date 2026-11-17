@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.53] - 2026-11-18
+
+### Changed
+
+- INT-007 완료 전이: `result.md` 작성, `intent.md` T-01~T-06 분해·완료 표시, `done/` 이동 및 `INDEX.md` 재작성
+- INT-009 요구 문서 `active/` 이동 반영(스캔 기준 INDEX 동기화)
+
 ## [0.1.52] - 2026-11-18
 
 ### Changed
