@@ -1,12 +1,31 @@
-import { DOMIRROR_ATTR, formatSourceLocation } from '@domirror/shared';
+import {
+  DOMIRROR_ATTR,
+  DOMIRROR_COMPONENT_ATTR,
+  DOMIRROR_DS_ATTR,
+  formatSourceLocation,
+} from '@domirror/shared';
+
+/** 문자열 속성 값의 `&`·`"`를 HTML 엔티티로 바꾼다(순서 고정). */
+export function escapeAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
 
 /**
  * 여는 태그 이름 바로 뒤에 넣을 속성 텍스트(앞 공백 포함).
  * JSX·Vue 템플릿 모두 문자열 속성의 HTML 엔티티를 해석하므로 `&`·`"`를 이스케이프한다.
  */
 export function attributeText(file: string, line: number, column: number): string {
-  const value = formatSourceLocation({ file, line, column }).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  return ` ${DOMIRROR_ATTR}="${value}"`;
+  return ` ${DOMIRROR_ATTR}="${escapeAttribute(formatSourceLocation({ file, line, column }))}"`;
+}
+
+/** 컴포넌트 정보 속성 텍스트(앞 공백 포함, FR-6). */
+export function componentAttributeText(value: string): string {
+  return ` ${DOMIRROR_COMPONENT_ATTR}="${escapeAttribute(value)}"`;
+}
+
+/** 값이 없는 디자인 시스템 표시 속성 텍스트(앞 공백 포함, FR-6). */
+export function dsAttributeText(): string {
+  return ` ${DOMIRROR_DS_ATTR}`;
 }
 
 /** 주입기 내부 예외를 소스 위치와 함께 감싼다 (NFR-4). */

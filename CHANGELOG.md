@@ -2,6 +2,17 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.24] - 2026-11-17
+
+### Added
+
+- React 주입기가 호스트 요소에 `data-domirror-component`(이름|정의 파일)와 DS 여부 `data-domirror-ds`를 주입
+- DS 패턴과 일치하는 정적 import를 쓰는 컴포넌트 태그에 사용처 측 속성 주입
+
+### Changed
+
+- 속성 이스케이프·컴포넌트 속성 문자열 유틸과 정적 import 매퍼를 공용 모듈로 분리
+
 ## [0.1.23] - 2026-11-17
 
 ### Added
