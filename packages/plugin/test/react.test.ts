@@ -5,9 +5,15 @@ const root = '/proj';
 const id = '/proj/src/App.tsx';
 
 type DesignSystemMatcher = NonNullable<Parameters<typeof reactInjector.transform>[2]['isDesignSystem']>;
+type ProtectedMatcher = NonNullable<Parameters<typeof reactInjector.transform>[2]['isProtected']>;
 
-function run(code: string, fileId = id, isDesignSystem?: DesignSystemMatcher): string | null {
-  return reactInjector.transform(code, fileId, { root, isDesignSystem })?.code ?? null;
+function run(
+  code: string,
+  fileId = id,
+  isDesignSystem?: DesignSystemMatcher,
+  isProtected?: ProtectedMatcher,
+): string | null {
+  return reactInjector.transform(code, fileId, { root, isDesignSystem, isProtected })?.code ?? null;
 }
 
 /** 소스에서 needle이 시작하는 위치를 1부터 시작하는 line:column으로 계산한다. */
@@ -152,6 +158,49 @@ describe('reactInjector', () => {
       const code = "import * as UI from '@acme/uikit';\nexport const A = () => <UI.Button />;\n";
       const out = run(code, id, dsSpecifiers('@acme/uikit'));
       expect(out).toContain('<UI.Button data-domirror-component="UI.Button|@acme/uikit" data-domirror-ds />');
+    });
+  });
+
+  describe('보호 영역 주입 (FR-3·E-7)', () => {
+    it('보호 파일의 정의 측 요소에 위치→component→ds→protected 순서로 넣는다 (AC-2)', () => {
+      const code = 'export const A = () => <div className="a" />;\n';
+      const out = run(
+        code,
+        id,
+        ({ file }) => file === 'src/App.tsx',
+        () => true,
+      );
+      expect(out).toContain(
+        `<div data-domirror="src/App.tsx:${locationOf(code, '<div')}" data-domirror-component="A|src/App.tsx" data-domirror-ds data-domirror-protected className="a" />`,
+      );
+    });
+
+    it('비보호 파일의 정의 측 요소에는 넣지 않는다', () => {
+      const code = 'export const A = () => <div />;\n';
+      const out = run(code, id, undefined, () => false);
+      expect(out).not.toBeNull();
+      expect(out).not.toContain('data-domirror-protected');
+    });
+
+    it('사용처 측 컴포넌트 태그에는 보호 속성을 넣지 않는다 (AC-3)', () => {
+      const code = "import { Button } from '@acme/ui';\nexport const A = () => <Button />;\n";
+      const out = run(code, id, dsSpecifiers('@acme/ui'), () => true);
+      expect(out).toContain('<Button data-domirror-component="Button|@acme/ui" data-domirror-ds />');
+      expect(out).not.toContain('data-domirror-protected');
+    });
+
+    it('data-domirror-component만 있는 요소에도 보호 속성을 1회 넣는다 (가드 밖 판정)', () => {
+      const code = 'export const A = () => <div data-domirror-component="Keep|x" />;\n';
+      const out = run(code, id, undefined, () => true);
+      expect(out).toContain('data-domirror-component="Keep|x"');
+      expect(out?.match(/data-domirror-protected/g)).toHaveLength(1);
+    });
+
+    it('이미 data-domirror-protected가 있으면 중복 주입하지 않는다 (E-7)', () => {
+      const code = 'export const A = () => <div data-domirror-protected />;\n';
+      const out = run(code, id, undefined, () => true);
+      expect(out).not.toBeNull();
+      expect(out?.match(/data-domirror-protected/g)).toHaveLength(1);
     });
   });
 

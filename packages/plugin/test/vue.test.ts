@@ -5,9 +5,15 @@ const root = '/proj';
 const id = '/proj/src/App.vue';
 
 type DesignSystemMatcher = NonNullable<Parameters<typeof vueInjector.transform>[2]['isDesignSystem']>;
+type ProtectedMatcher = NonNullable<Parameters<typeof vueInjector.transform>[2]['isProtected']>;
 
-function run(code: string, fileId = id, isDesignSystem?: DesignSystemMatcher): string | null {
-  return vueInjector.transform(code, fileId, { root, isDesignSystem })?.code ?? null;
+function run(
+  code: string,
+  fileId = id,
+  isDesignSystem?: DesignSystemMatcher,
+  isProtected?: ProtectedMatcher,
+): string | null {
+  return vueInjector.transform(code, fileId, { root, isDesignSystem, isProtected })?.code ?? null;
 }
 
 function locationOf(code: string, needle: string): string {
@@ -200,6 +206,65 @@ describe('vueInjector', () => {
       expect(out).toContain(`<div data-domirror="src/App.vue:${locationOf(code, '<div')}"`);
       expect(out).toContain(`<span data-domirror="src/App.vue:${locationOf(code, '<span')}"`);
       expect(out).toContain('data-domirror-component="acme-button|@acme/ui"');
+    });
+  });
+
+  describe('보호 영역 주입 (FR-3·E-7)', () => {
+    it('보호 파일의 정의 측 요소에 위치→component→ds→protected 순서로 넣는다 (AC-2)', () => {
+      const code = '<template>\n  <button class="b">x</button>\n</template>\n';
+      const out = run(
+        code,
+        id,
+        ({ file }) => file === 'src/App.vue',
+        () => true,
+      );
+      expect(out).toContain(
+        `<button data-domirror="src/App.vue:${locationOf(code, '<button')}" data-domirror-component="App|src/App.vue" data-domirror-ds data-domirror-protected class="b">`,
+      );
+    });
+
+    it('비보호 파일의 정의 측 요소에는 넣지 않는다', () => {
+      const code = '<template>\n  <section />\n</template>\n';
+      const out = run(code, id, undefined, () => false);
+      expect(out).not.toBeNull();
+      expect(out).not.toContain('data-domirror-protected');
+    });
+
+    it('사용처 측 컴포넌트 태그에는 보호 속성을 넣지 않는다 (AC-3)', () => {
+      const code = [
+        '<script setup lang="ts">',
+        "import AcmeButton from '@acme/ui';",
+        '</script>',
+        '',
+        '<template>',
+        '  <acme-button />',
+        '</template>',
+        '',
+      ].join('\n');
+      const out = run(code, id, dsSpecifiers('@acme/ui'), () => true);
+      expect(out).toContain('<acme-button data-domirror-component="acme-button|@acme/ui" data-domirror-ds />');
+      expect(out).not.toContain('data-domirror-protected');
+    });
+
+    it('data-domirror-component만 있는 요소에도 보호 속성을 1회 넣는다 (가드 밖 판정)', () => {
+      const code = '<template>\n  <div data-domirror-component="Keep|x" />\n</template>\n';
+      const out = run(code, id, undefined, () => true);
+      expect(out).toContain('data-domirror-component="Keep|x"');
+      expect(out?.match(/data-domirror-protected/g)).toHaveLength(1);
+    });
+
+    it('이미 정적 data-domirror-protected가 있으면 중복 주입하지 않는다 (E-7)', () => {
+      const code = '<template>\n  <div data-domirror-protected />\n</template>\n';
+      const out = run(code, id, undefined, () => true);
+      expect(out).not.toBeNull();
+      expect(out?.match(/data-domirror-protected/g)).toHaveLength(1);
+    });
+
+    it('이미 :data-domirror-protected 바인딩이 있으면 중복 주입하지 않는다 (E-7)', () => {
+      const code = '<template>\n  <div :data-domirror-protected="yes" />\n</template>\n';
+      const out = run(code, id, undefined, () => true);
+      expect(out).not.toBeNull();
+      expect(out?.match(/data-domirror-protected/g)).toHaveLength(1);
     });
   });
 });

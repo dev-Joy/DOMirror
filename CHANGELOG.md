@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.48] - 2026-11-18
+
+### Added
+
+- INT-007 Phase 3: React·Vue 정의 측 요소에 보호 영역 표식 `data-domirror-protected` 주입(component 속성 유무와 무관, 중복 주입 방지)
+- INT-007 Phase 3: 주입기 보호 속성 테스트 11건과 `enabled:false` 산출물 0건 단언 추가
+
 ## [0.1.47] - 2026-11-18
 
 ### Added

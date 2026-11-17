@@ -1,8 +1,14 @@
-import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, type Injector } from '@domirror/shared';
+import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, DOMIRROR_PROTECTED_ATTR, type Injector } from '@domirror/shared';
 import MagicString from 'magic-string';
 import { parseSync, Visitor } from 'oxc-parser';
 import { mapStaticImports } from '../imports.js';
-import { attributeText, componentAttributeText, dsAttributeText, InjectError } from '../inject-utils.js';
+import {
+  attributeText,
+  componentAttributeText,
+  dsAttributeText,
+  InjectError,
+  protectedAttributeText,
+} from '../inject-utils.js';
 import { toRelativeFile } from '../paths.js';
 import { createLineIndex } from '../positions.js';
 
@@ -134,6 +140,10 @@ export const reactInjector: Injector = {
             if (!hasAttribute(node.attributes, DOMIRROR_COMPONENT_ATTR)) {
               text += componentAttributeText(`${componentName()}|${file}`);
               if (ctx.isDesignSystem?.({ file }) === true) text += dsAttributeText();
+            }
+            // 보호 영역은 component 속성 존재 여부와 무관하게 판정한다 (FR-3·E-7).
+            if (ctx.isProtected?.(file) === true && !hasAttribute(node.attributes, DOMIRROR_PROTECTED_ATTR)) {
+              text += protectedAttributeText();
             }
             s.appendLeft(name.end, text);
             injected += 1;

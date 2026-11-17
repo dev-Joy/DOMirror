@@ -1,10 +1,16 @@
 import { createRequire } from 'node:module';
-import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, type Injector } from '@domirror/shared';
+import { DOMIRROR_ATTR, DOMIRROR_COMPONENT_ATTR, DOMIRROR_PROTECTED_ATTR, type Injector } from '@domirror/shared';
 import type * as CompilerSfc from '@vue/compiler-sfc';
 import MagicString from 'magic-string';
 import { parseSync } from 'oxc-parser';
 import { mapStaticImports } from '../imports.js';
-import { attributeText, componentAttributeText, dsAttributeText, InjectError } from '../inject-utils.js';
+import {
+  attributeText,
+  componentAttributeText,
+  dsAttributeText,
+  InjectError,
+  protectedAttributeText,
+} from '../inject-utils.js';
 import { toRelativeFile } from '../paths.js';
 import { createLineIndex } from '../positions.js';
 
@@ -113,6 +119,7 @@ export const vueInjector: Injector = {
     const s = new MagicString(code);
     const lineOf = createLineIndex(code);
     const isDesignSystem = ctx.isDesignSystem;
+    const isProtected = ctx.isProtected;
     const name = fileBasename(file);
     let injected = 0;
 
@@ -156,6 +163,10 @@ export const vueInjector: Injector = {
               if (!hasProp(node, DOMIRROR_COMPONENT_ATTR)) {
                 text += componentAttributeText(`${name}|${file}`);
                 if (isDesignSystem?.({ file }) === true) text += dsAttributeText();
+              }
+              // 보호 영역은 component 속성 존재 여부와 무관하게 판정한다 (FR-3·E-7).
+              if (isProtected?.(file) === true && !hasProp(node, DOMIRROR_PROTECTED_ATTR)) {
+                text += protectedAttributeText();
               }
               s.appendLeft(insertAt, text);
               injected++;

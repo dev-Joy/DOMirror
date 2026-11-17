@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DOMIRROR_COMPONENT_ATTR, DOMIRROR_DS_ATTR } from '@domirror/shared';
+import { DOMIRROR_COMPONENT_ATTR, DOMIRROR_DS_ATTR, DOMIRROR_PROTECTED_ATTR } from '@domirror/shared';
 import react from '@vitejs/plugin-react';
 import vue from '@vitejs/plugin-vue';
 import { build, createServer, type PluginOption } from 'vite';
@@ -140,6 +140,7 @@ describe.each(cases)('Vite 통합: $name', (c) => {
     expect(code).not.toContain('data-domirror');
     expect(code).not.toContain(DOMIRROR_COMPONENT_ATTR);
     expect(code).not.toContain(DOMIRROR_DS_ATTR);
+    expect(code).not.toContain(DOMIRROR_PROTECTED_ATTR);
   });
 });
 
