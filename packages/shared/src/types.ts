@@ -54,3 +54,31 @@ export type ContentToWorkerMessage = {
 export type WorkerToContentMessage = { type: 'domirror:toggle' };
 
 export type SendResult = { ok: true; accepted: number } | { ok: false; error: string };
+
+/** 화면 위 코멘트. 서버 메모리 보관 항목. */
+export interface ScreenComment {
+  id: string;
+  source: { file: string; line: number; column: number; inherited: boolean };
+  selectorHint: string;
+  pageUrl: string;
+  body: string;
+  createdAt: string;
+  status: 'open' | 'resolved';
+}
+
+export type ScreenCommentInput = Omit<ScreenComment, 'status'>;
+
+export interface PostCommentsRequest {
+  comments: ScreenCommentInput[];
+}
+
+export interface PostCommentsResponse {
+  accepted: number;
+  ids: string[];
+}
+
+export type ContentToWorkerCommentsMessage = {
+  type: 'domirror:send-comments';
+  port: number;
+  comments: ScreenCommentInput[];
+};

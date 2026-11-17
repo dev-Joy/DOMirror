@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.33] - 2026-11-17
+
+### Added
+
+- shared에 `ScreenComment`·`ScreenCommentInput`·`PostCommentsRequest`·`PostCommentsResponse`·`ContentToWorkerCommentsMessage` 타입과 `COMMENTS_PATH` 상수 추가
+
 ## [0.1.32] - 2026-11-17
 
 ### Changed
