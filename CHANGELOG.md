@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.26] - 2026-11-17
+
+### Added
+
+- 플러그인 통합 테스트에 `enabled:false` 컴포넌트 속성 0건, 빌드 산출물 절대 경로 0건(React·Vue), `designSystem` 사용처 배선 케이스 추가
+
 ## [0.1.25] - 2026-11-17
 
 ### Added
