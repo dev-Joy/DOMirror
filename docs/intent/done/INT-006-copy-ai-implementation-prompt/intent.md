@@ -1,7 +1,7 @@
 ---
 id: INT-006
 title: 선택 요소·변경 내역을 AI 구현 프롬프트로 복사
-status: planned
+status: done
 priority: P2
 created: 2026-11-17
 updated: 2026-11-17
@@ -47,4 +47,12 @@ updated_at: 2026-11-17T15:58:52+09:00
 - [x] 복사 후 변경 내역 상태를 바꾸는가? (MCP 전송처럼 내역에서 빼기 / 그대로 유지) 그리고 MCP 전송과 병행인가 대체인가? → 답변: 내역 유지(복사는 읽기 전용), MCP 전송과 병행 (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [x] T-01 [P2] 프롬프트 생성 모듈과 단위 테스트: `packages/extension/src/prompt.ts`(`buildPrompt`·`PromptInput`·`PromptSelection`) + `packages/extension/test/prompt.test.ts` 19케이스(AC-1~AC-6) (2026-11-17)
+- [x] T-02 [P2] 패널 복사 버튼과 클립보드 연결: `content.ts` `AI 프롬프트 복사` 버튼·`copyText`(`navigator.clipboard`→`execCommand('copy')` 폴백)·`SendHandlers.promptInput`·`onCopy` 상태 표시·`EditSession.promptInput` (2026-11-17)
+- [x] T-03 [P2] README 사용법 보강: AI 프롬프트 복사 1단락(MCP 미사용 도구용, 내역 유지, 페이지 URL 포함 고지) (2026-11-17)
+
+## 결과
+- 완료일: 2026-11-17.
+- 변경 내역 전체(없으면 선택 요소 위치)를 한국어 마크다운 구현 프롬프트로 클립보드에 복사하는 `buildPrompt`·패널 복사 버튼·클립보드 폴백 구현.
+- Tier 2 검증 Pass(AC-1~AC-8). 정합성 `조건부-실행` 1-pass `PASS_WITH_NOTES`(비차단 NOTE 3건, 설계 이탈 아님 1건).
+- 상세: [result.md](result.md)
