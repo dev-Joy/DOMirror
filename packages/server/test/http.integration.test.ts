@@ -98,7 +98,12 @@ describe('domirror server (HTTP + MCP)', () => {
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${MCP_PATH}`)));
     try {
       const tools = await client.listTools();
-      expect(tools.tools.map((t) => t.name).sort()).toEqual(['list_pending_changes', 'mark_changes_applied']);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual([
+        'list_comments',
+        'list_pending_changes',
+        'mark_changes_applied',
+        'mark_comments_resolved',
+      ]);
 
       const listed = await client.callTool({ name: 'list_pending_changes', arguments: {} });
       expect(listed.isError).not.toBe(true);
@@ -231,5 +236,38 @@ describe('domirror server (HTTP + MCP)', () => {
     const health = await raw({ method: 'GET', path: HEALTH_PATH });
     expect(health.status).toBe(200);
     expect(JSON.parse(health.body)).toMatchObject({ pending: 0 });
+  });
+
+  it('POST /comments → MCP list_comments → mark_comments_resolved → 재조회 제외 (AC-1 · Q2=B)', async () => {
+    const target: ScreenCommentInput = { ...comment, id: 'cmt-mcp' };
+    expect((await postComments(JSON.stringify({ comments: [target] }), { Origin: EXTENSION_ORIGIN })).status).toBe(200);
+
+    const client = new Client({ name: 'domirror-test', version: '0.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${MCP_PATH}`)));
+    try {
+      const listed = await client.callTool({ name: 'list_comments', arguments: {} });
+      expect(listed.isError).not.toBe(true);
+      const comments = (listed.structuredContent as { comments: unknown[] }).comments;
+      // 같은 id의 코멘트가 status 'open'와 함께 필드 그대로 돌아온다.
+      expect(comments).toContainEqual({ ...target, status: 'open' });
+      const text = listed.content.find((c) => c.type === 'text');
+      expect(text && JSON.parse(text.text)).toEqual(listed.structuredContent);
+
+      const marked = await client.callTool({ name: 'mark_comments_resolved', arguments: { ids: ['cmt-mcp'] } });
+      expect(marked.structuredContent).toEqual({ resolved: ['cmt-mcp'], notFound: [] });
+
+      // 빈 배열은 스키마(min 1) 위반으로 도구 오류 응답.
+      const empty = await client.callTool({ name: 'mark_comments_resolved', arguments: { ids: [] } });
+      expect(empty.isError).toBe(true);
+
+      const missing = await client.callTool({ name: 'mark_comments_resolved', arguments: { ids: ['nope'] } });
+      expect(missing.structuredContent).toEqual({ resolved: [], notFound: ['nope'] });
+
+      const relisted = await client.callTool({ name: 'list_comments', arguments: {} });
+      const remaining = (relisted.structuredContent as { comments: { id: string }[] }).comments;
+      expect(remaining.map((c) => c.id)).not.toContain('cmt-mcp');
+    } finally {
+      await client.close();
+    }
   });
 });

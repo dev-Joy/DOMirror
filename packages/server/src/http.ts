@@ -123,7 +123,7 @@ function respondError(res: ServerResponse, error: unknown): void {
 export function createHttpServer(opts: { store: ChangeStore; commentStore: CommentStore; extensionId?: string }): Server {
   const { store, commentStore, extensionId } = opts;
   const validateHost = localhostHostValidation();
-  const mcpHandler = createMcpHandler(createMcpFactory(store));
+  const mcpHandler = createMcpHandler(createMcpFactory(store, commentStore));
   const mcpNodeHandler = toNodeHandler(mcpHandler, { maxRequestBodySize: MAX_BODY_BYTES });
 
   const server = createServer((req, res) => {

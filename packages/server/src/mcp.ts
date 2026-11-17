@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import { StyleChangeSchema } from './schema.js';
+import type { CommentStore } from './comment-store.js';
+import { ScreenCommentSchema, StyleChangeSchema } from './schema.js';
 import type { ChangeStore } from './store.js';
 
 export const SERVER_NAME = 'domirror';
@@ -16,7 +17,7 @@ function jsonResult<T extends Record<string, unknown>>(value: T) {
 }
 
 /** `createMcpHandler`가 요청마다 호출하는 factory. 저장소는 바깥에서 공유한다. */
-export function createMcpFactory(store: ChangeStore): () => McpServer {
+export function createMcpFactory(store: ChangeStore, commentStore: CommentStore): () => McpServer {
   return () => {
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
@@ -43,6 +44,31 @@ export function createMcpFactory(store: ChangeStore): () => McpServer {
         annotations: { idempotentHint: true },
       },
       ({ ids }) => jsonResult(store.markApplied(ids)),
+    );
+
+    server.registerTool(
+      'list_comments',
+      {
+        title: 'List open screen comments',
+        description:
+          'Returns comments written on the page in the browser that are still open. ' +
+          'Each comment has the source location (file:line:column, inherited), selector hint, page URL, body, status and id.',
+        outputSchema: z.object({ comments: z.array(ScreenCommentSchema) }),
+        annotations: { readOnlyHint: true },
+      },
+      () => jsonResult({ comments: commentStore.listOpen() }),
+    );
+
+    server.registerTool(
+      'mark_comments_resolved',
+      {
+        title: 'Mark screen comments as resolved',
+        description: 'Marks the given comment ids as resolved so they no longer appear in list_comments.',
+        inputSchema: z.object({ ids: z.array(z.string()).min(1) }),
+        outputSchema: z.object({ resolved: z.array(z.string()), notFound: z.array(z.string()) }),
+        annotations: { idempotentHint: true },
+      },
+      ({ ids }) => jsonResult(commentStore.markResolved(ids)),
     );
 
     return server;

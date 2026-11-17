@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.36] - 2026-11-17
+
+### Added
+
+- MCP 도구 `list_comments`(open만, readOnlyHint)와 `mark_comments_resolved`(멱등) 추가, `createMcpFactory`에 코멘트 저장소 주입
+- 코멘트 전송 후 MCP 조회·resolved 제외·빈 ids 거부·notFound 통합 테스트
+
 ## [0.1.35] - 2026-11-17
 
 ### Added
