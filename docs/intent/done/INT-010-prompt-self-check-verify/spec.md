@@ -1,6 +1,6 @@
 # Spec: AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가
-- Intent: [INT-010](intent.md) | Status: planned | 작성일: 2026-11-18
-- Intent updated_at: 2026-11-17T23:54:18+09:00
+- Intent: [INT-010](intent.md) | Status: done | 작성일: 2026-11-18
+- Intent updated_at: 2026-11-18T19:47:06+09:00
 
 ## 1. 개요
 - 원 요구: google-gemini/demolab(Apache-2.0, 스킬 1개 `skills/gemini-frontend-design/SKILL.md`)을 검토한 뒤 "생성 프롬프트 끝에 사전 점검 체크리스트 + 브라우저 도구 존재 시 재캡처 시각 확인, 없으면 폴백" 기법을 채택했다(선택 A, 출처: 대화 요청).
@@ -23,7 +23,7 @@
   - `README.md` 수정. intent 제안 결과에 없으므로 이번 범위에 넣지 않는다(§9 R-3).
 
 ## 3. 영향 시스템 · 모듈 · 데이터
-- 기준: 2026-11-18, HEAD `0bb4c00`. researcher가 실측했고 intent가 인용한 줄과 불일치는 0건이다.
+- 기준: 작성 시점 2026-11-18, HEAD `0bb4c00`. researcher가 실측했고 intent가 인용한 줄과 불일치는 0건이다. 구현 시점(HEAD `db5fb3d`) 재실측에서 대상 2파일(`prompt.ts`·`prompt.test.ts`)의 인용 줄은 ±0행 그대로였고, 변경 없음 참조 5건만 아래 ▶ 병기값으로 이동했다.
 - `packages/extension/src/prompt.ts` (111행, LF)
   - `:6` 주석: "DOM·chrome·location에 의존하지 않는 순수 함수다".
   - `:9`~`:14` `PromptSelection { hint; located: Located | null; pageUrl }`.
@@ -36,7 +36,7 @@
     - `:88` `return lines.join('\n');`
   - `:91`~`:105` `selectionPrompt`
     - `:97` 머리 `'# 화면 요소 위치'`, `:103` 마지막 원소 `` `- 페이지: ${pageUrl}` ``, `:104` `].join('\n');`
-  - `:107` JSDoc "빈 내역이어도 머리만 돌려준다", `:108` `export function buildPrompt(input: PromptInput): string {`, `:109`~`:110` 모드 분기.
+  - `:107` JSDoc "빈 내역이어도 머리만 돌려준다", `:108` `export function buildPrompt(input: PromptInput): string {`, `:109`~`:110` 모드 분기. ▶ 구현 후(헬퍼 +35행 삽입) `:142`·`:143`·`:144`~`:145`.
   - 현재 `##` 섹션 헤더는 없다. "점검"·"검증"·반영 확인 문구도 없다("위치 미확인" 3건만 있다: `:11`·`:38`·`:68`).
 - `packages/extension/test/prompt.test.ts` (200행, vitest, 스냅샷 없음)
   - 단언 방식: `toContain`, `not.toContain`, `startsWith`, `:28` `count()` 헬퍼.
@@ -50,8 +50,8 @@
     - `:145` `not.toContain('Vite 루트 기준')`
     - `:81`~`:83` `not.toContain('/Users')`, `'~/'`, `'file://'`
   - `:52`·`:132`·`:196` `startsWith`는 머리만 고정하므로 말미 추가의 영향이 없다.
-- 호출처(변경 없음): `packages/extension/src/content.ts:287` `const text = buildPrompt(input);`. 모드 결정은 `content.ts:467`~`:471` `promptInput()`이다. 내역이 1건 이상이면 `changes`, 아니면 `selection`이다. 그래서 실제 UI에서 빈 `changes`는 생기지 않는다.
-- 문서 근거(변경 없음): `README.md:161` `### 반영 결과 자동 확인 (선택: chrome-devtools-mcp)`, `:163` 계산값을 `after`와 비교하고 미등록 시 새로고침 확인, `:177` 별도 브라우저에서 비교하는 이유(같은 탭은 인라인 `!important`로 남아 오판), `:179` 사용 도구 `new_page`·`navigate_page`(`type: "reload"`)·`wait_for`·`evaluate_script`·`take_screenshot`.
+- 호출처(변경 없음): `packages/extension/src/content.ts:333` `const text = buildPrompt(input);`(작성 시점 `:287`). 모드 결정은 `content.ts:519`~`:524` `promptInput()`이다(작성 시점 `:467`~`:471`). 내역이 1건 이상이면 `changes`, 아니면 `selection`이다. 그래서 실제 UI에서 빈 `changes`는 생기지 않는다.
+- 문서 근거(변경 없음): `README.md:162` `### 반영 결과 자동 확인 (선택: chrome-devtools-mcp)`, `:164` 계산값을 `after`와 비교하고 미등록 시 새로고침 확인, `:178` 별도 브라우저에서 비교하는 이유(같은 탭은 인라인 `!important`로 남아 오판), `:180` 사용 도구(작성 시점 `:161`·`:163`·`:177`·`:179`) `new_page`·`navigate_page`(`type: "reload"`)·`wait_for`·`evaluate_script`·`take_screenshot`.
 - 데이터: 영속 데이터 변경 없음. 클립보드 텍스트만 바뀐다.
 
 ## 4. 기능 요구사항 (FR-n)
@@ -67,7 +67,7 @@
   - 같은 탭 비교 금지 이유 1줄: 편집한 탭에는 보낸 값이 인라인 `!important`로 남아 반영에 실패해도 일치로 보인다(`README.md:177`).
   - 도구가 없으면: 사용자에게 페이지를 새로고침해 각 항목을 직접 확인하도록 안내한다.
 - FR-4 선택 모드 반영 확인: 같은 섹션 구조를 쓰되 비교 대상은 "요청한 변경"이다(`after` 없음). 도구가 있으면 별도 브라우저에서 위 페이지 URL을 다시 열어 화면을 확인하고, 없으면 새로고침 후 수동 확인을 안내한다.
-- FR-5 빈 내역: `changes`가 0건이면 두 섹션을 붙이지 않는다. 머리만 돌려주는 기존 동작(`prompt.ts:107`)을 유지한다(D-S1).
+- FR-5 빈 내역: `changes`가 0건이면 두 섹션을 붙이지 않는다. 머리만 돌려주는 기존 동작(`prompt.ts:142`, 작성 시점 `:107`)을 유지한다(D-S1).
 - FR-6 단위 테스트: `prompt.test.ts`에 FR-1~FR-5를 검증하는 테스트를 추가한다. 기존 테스트는 전부 통과해야 한다.
 
 ## 5. 비기능 요구사항 (NFR-n)

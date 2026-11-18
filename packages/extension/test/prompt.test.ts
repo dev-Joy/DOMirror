@@ -198,3 +198,49 @@ describe('buildPrompt — 위치 없음·중복·순서 (E-1·E-8·FR-2)', () =>
     expect(text).not.toContain('- 페이지: ');
   });
 });
+
+describe('buildPrompt — 자가 점검·반영 확인 (AC-1~AC-4)', () => {
+  it('내역 모드: 마지막 항목 뒤에 두 섹션을 붙이고 항목 수를 적는다 (AC-1)', () => {
+    const text = buildPrompt(changes(change(), change({ id: 'id-2', property: 'color', after: '20px' })));
+    expect(count(text, '## 자가 점검')).toBe(1);
+    expect(count(text, '## 반영 확인')).toBe(1);
+    expect(text).toContain('\n\n## 자가 점검\n');
+    expect(text).toContain('\n\n## 반영 확인\n');
+    expect(text).toContain('위 2개 항목');
+    expect(text.indexOf('## 자가 점검')).toBeGreaterThan(text.indexOf('### 2.'));
+    expect(text.indexOf('## 반영 확인')).toBeGreaterThan(text.indexOf('## 자가 점검'));
+  });
+
+  it('내역 모드: 확인 수단과 같은 탭 비교 금지를 적는다 (AC-2)', () => {
+    const text = buildPrompt(changes(change(), change({ id: 'id-2', property: 'color' })));
+    expect(text).toContain('chrome-devtools-mcp');
+    expect(text).toContain('별도 브라우저');
+    expect(text).toContain('`!important`');
+    expect(text).toContain('새로고침');
+    expect(text).toContain('`after`');
+  });
+
+  it('선택 모드: 위치 있음·없음 모두 두 섹션을 붙이고 after 비교는 없다 (AC-3)', () => {
+    const cases = [
+      {
+        location: { file: 'src/App.tsx', line: 12, column: 5 },
+        inherited: false,
+        protected: false,
+      },
+      null,
+    ];
+    for (const located of cases) {
+      const text = buildPrompt({ kind: 'selection', selection: { hint: 'div.card', located, pageUrl: PAGE } });
+      expect(count(text, '## 자가 점검')).toBe(1);
+      expect(count(text, '## 반영 확인')).toBe(1);
+      expect(text).toContain('새로고침');
+      expect(text).not.toContain('`after`');
+    }
+  });
+
+  it('빈 내역: 두 섹션을 붙이지 않는다 (AC-4)', () => {
+    const text = buildPrompt(changes());
+    expect(text).not.toContain('## 자가 점검');
+    expect(text).not.toContain('## 반영 확인');
+  });
+});

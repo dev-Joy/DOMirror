@@ -51,6 +51,38 @@ function beforeText(c: LocalChange): string {
   return c.before.authored === null ? `${value} (계산값)` : value;
 }
 
+/** 프롬프트 말미의 자가 점검·반영 확인 섹션. 항목이 있을 때만 붙인다(FR-1·FR-3, D-S1). */
+function changesFooter(count: number): string[] {
+  return [
+    '',
+    '## 자가 점검',
+    `- [ ] 위 ${count}개 항목이 가리키는 선언에서 바꾼 것은 해당 속성뿐이다(다른 속성·요소 변경 0건).`,
+    '- [ ] 각 항목의 새 값이 화면에 적용된 값(`after`)과 같다(`#fff`와 `rgb()`처럼 표기가 다른 값은 정규화해 비교).',
+    '- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).',
+    '',
+    '## 반영 확인',
+    '- 브라우저 확인 도구가 있으면(예: chrome-devtools-mcp): 이 익스텐션이 설치되지 않은 별도 브라우저에서 위에 적힌 페이지 URL을 새로 열고, 각 항목 요소의 계산값을 `after`와 비교해 어긋난 항목을 보고해 주세요.',
+    '- 편집한 탭에는 보낸 값이 인라인 `!important`로 남아 있어, 같은 탭에서 비교하면 반영에 실패해도 일치로 보입니다.',
+    '- 브라우저 확인 도구가 없으면: 페이지를 새로고침한 뒤 각 항목이 요청대로 바뀌었는지 사용자가 직접 확인하도록 안내해 주세요.',
+  ];
+}
+
+/** 선택 모드 말미 섹션. 선택 모드에는 `after`가 없어 값 비교 문구를 쓰지 않는다(FR-2·FR-4, D-S4). */
+function selectionFooter(): string[] {
+  return [
+    '',
+    '## 자가 점검',
+    '- [ ] 선택한 요소에 해당하는 코드만 수정했다(다른 요소·속성 변경 0건).',
+    '- [ ] 바꾼 값이 요청한 변경과 같다(값 표기·단위 차이는 요청 기준으로 맞췄다).',
+    '- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).',
+    '',
+    '## 반영 확인',
+    '- 브라우저 확인 도구가 있으면(예: chrome-devtools-mcp): 이 익스텐션이 설치되지 않은 별도 브라우저에서 위에 적힌 페이지 URL을 새로 열어, 화면이 요청대로 바뀌었는지 확인해 주세요.',
+    '- 편집한 탭에는 보낸 값이 인라인 `!important`로 남아 있어, 같은 탭에서 비교하면 반영에 실패해도 일치로 보입니다.',
+    '- 브라우저 확인 도구가 없으면: 페이지를 새로고침한 뒤 요청한 변경이 화면에 반영되었는지 사용자가 직접 확인하도록 안내해 주세요.',
+  ];
+}
+
 function changesPrompt(changes: readonly LocalChange[]): string {
   const lines = [
     '# 화면 스타일 변경 반영 요청',
@@ -85,6 +117,8 @@ function changesPrompt(changes: readonly LocalChange[]): string {
     if (c.stale) lines.push('- 주의: 페이지 표시가 바뀌었을 수 있음. 새로고침·HMR로 요소가 교체되었을 수 있습니다.');
     if (commonUrl === null) lines.push(`- 페이지: ${c.pageUrl}`);
   }
+  // 자가 점검·반영 확인은 항목이 있을 때만 붙인다(FR-5·E-1).
+  if (changes.length > 0) lines.push(...changesFooter(changes.length));
   return lines.join('\n');
 }
 
@@ -101,6 +135,7 @@ function selectionPrompt(selection: PromptSelection): string {
     `- 위치: ${location}`,
     `- 요소: ${inlineCode(hint)}`,
     `- 페이지: ${pageUrl}`,
+    ...selectionFooter(),
   ].join('\n');
 }
 

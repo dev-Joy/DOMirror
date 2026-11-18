@@ -1,11 +1,11 @@
 ---
 id: INT-010
 title: AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가
-status: planned
+status: done
 priority: P2
 created: 2026-11-17
-updated: 2026-11-17
-updated_at: 2026-11-17T23:54:18+09:00
+updated: 2026-11-18
+updated_at: 2026-11-18T19:47:06+09:00
 ---
 
 # Intent: AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가
@@ -22,8 +22,8 @@ updated_at: 2026-11-17T23:54:18+09:00
 
 ## 영향 사용자 및 시스템 (Affected users and systems)
 - 사용자: DOMirror 사용자(프롬프트를 에이전트에 붙여넣는 개발자), 구현 에이전트.
-- 익스텐션 프롬프트 생성 `packages/extension/src/prompt.ts:108`(`buildPrompt`), 단위 테스트 `packages/extension/test/prompt.test.ts`.
-- 문서 근거 `README.md:161-177`(chrome-devtools-mcp 반영 결과 자동 확인 흐름, INT-002).
+- 익스텐션 프롬프트 생성 `packages/extension/src/prompt.ts:143`(`buildPrompt`, 작성 시점 `:108`), 단위 테스트 `packages/extension/test/prompt.test.ts`.
+- 문서 근거 `README.md:162-178`(chrome-devtools-mcp 반영 결과 자동 확인 흐름, INT-002 / 작성 시점 `:161-177`).
 
 ## 제약 (Constraints)
 - 최소 변경. 기존 프롬프트 구조와 한국어 마크다운 형식을 유지한다.
@@ -44,4 +44,10 @@ updated_at: 2026-11-17T23:54:18+09:00
 - [x] 점검 목록을 '내역 전체'/'선택 요소' 두 모드 모두에 넣을지, 확인 단계 문구를 chrome-devtools-mcp 고유 도구명으로 쓸지 일반 표현으로 쓸지 → 답변: 두 모드 모두 적용, 확인 단계는 일반 표현("브라우저 확인 도구가 있으면")으로 쓰고 예시로 chrome-devtools-mcp 병기 (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [x] T-01 [P2] `prompt.ts`에 `changesFooter(count)`·`selectionFooter()` 헬퍼 추가 후 `changesPrompt`(빈 내역 제외)·`selectionPrompt` 말미에 `## 자가 점검`·`## 반영 확인` 섹션 부착 (2026-11-18)
+- [x] T-02 [P2] `prompt.test.ts`에 AC-1~AC-4 신규 4케이스 추가, `pnpm test`·`lint`·`typecheck` 전체 검증 (2026-11-18)
+
+## 결과 (Result)
+- `buildPrompt` 두 모드 말미에 `## 자가 점검`·`## 반영 확인` 섹션 추가, 순수 헬퍼 2개로 분리(시그니처·호출처 변경 0건, 신규 의존성 0건).
+- 신규 4케이스 포함 23 passed, `pnpm test` 348 passed(29 files)·`lint`·`typecheck` Exit 0. 정합성 게이트 `조건부-실행` 1-pass `PASS_WITH_NOTES`(요구 28/28).
+- 상세: [result.md](result.md)

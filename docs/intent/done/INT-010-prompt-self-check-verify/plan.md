@@ -1,6 +1,6 @@
 # Plan: AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가
 - Intent: [INT-010](intent.md) | Tier: 2 | 작성일: 2026-11-18
-- Intent updated_at: 2026-11-17T23:54:18+09:00
+- Intent updated_at: 2026-11-18T19:47:06+09:00
 - Spec: [spec.md](spec.md)
 
 ## 1. Tier 산정
