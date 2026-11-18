@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { originalValue, restoreStale, type LocalChange } from '../src/change-log.js';
 import { EditTracker } from '../src/edit-tracker.js';
+import type { ReadComputed } from '../src/verify.js';
 import { FakeElement } from './fake-element.js';
 
 const P = 'padding-top';
@@ -190,3 +191,49 @@ describe('EditTracker: D-1·D-A·F-1 경로는 잠금으로 생기지 않는다'
     });
   }
 });
+
+describe('EditTracker: 전송 기록·반영 확인', () => {
+  /** 인라인 값이 있으면 그것, 없으면 규칙값(computed). */
+  const reader = (rule: string): ReadComputed => (el) => el.style.getPropertyValue(P) || rule;
+
+  it('T-1. 전송 중 verifySent는 null이고 기록·페이지가 그대로다 (E-1·AC-6)', () => {
+    const tracker = new EditTracker();
+    const el = new FakeElement();
+    const log = tracker.edit([], el, ch(el, '0px', '10px'));
+    tracker.beginSend(log);
+    expect(tracker.verifySent(reader('0px'))).toBeNull();
+    expect(tracker.sentCount).toBe(0);
+    expect(el.decls.get(P)).toEqual({ value: '10px', priority: 'important' });
+  });
+
+  it('T-2. endSend 뒤 sentCount 1, 인라인은 보낸 값 그대로, 내역은 0건이다 (FR-1·AC-1)', () => {
+    const tracker = new EditTracker();
+    const el = new FakeElement();
+    const log = tracker.edit([], el, ch(el, '10px', '20px'));
+    const sent = tracker.beginSend(log);
+    expect(tracker.endSend(log, sent)).toEqual([]);
+    tracker.finishSend();
+    expect(tracker.sentCount).toBe(1);
+    expect(el.decls.get(P)).toEqual({ value: '20px', priority: 'important' });
+  });
+
+  it('T-3. verifySent가 전송 이전 값으로 원복하고 기록을 비우며, 이후 restoreAll과 충돌하지 않는다 (AC-2·AC-6)', () => {
+    const tracker = new EditTracker();
+    const el = new FakeElement();
+    const log = tracker.edit([], el, ch(el, '0px', '10px'));
+    tracker.endSend(log, tracker.beginSend(log));
+    tracker.finishSend();
+
+    // 소스를 반영했다고 가정: 해제하면 규칙값 10px이 읽힌다.
+    const items = tracker.verifySent(reader('10px'));
+    expect(items?.map((i) => i.status)).toEqual(['match']);
+    expect(tracker.sentCount).toBe(0);
+    expect(el.decls.size).toBe(0);
+    expect(el.hasAttribute('style')).toBe(false);
+
+    tracker.restoreAll();
+    expect(el.decls.size).toBe(0);
+    expect(tracker.verifySent(reader('10px'))).toEqual([]);
+  });
+});
+

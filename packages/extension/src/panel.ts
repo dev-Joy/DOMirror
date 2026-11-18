@@ -4,6 +4,7 @@ import type { BlockedReason } from './picker.js';
 import { parsePickerColor } from './color.js';
 import { EDITABLE_PROPERTIES, PROPERTY_GROUP_LABELS, containerOf, type PropertyGroup } from './properties.js';
 import type { Located, LocatedComponent } from './source-locator.js';
+import type { VerifyItem, VerifyStatus } from './verify.js';
 
 // 패널의 위치 표시(FR-5)·편집 필드(FR-6)·변경 목록(FR-7·8) 영역과 선택 요소 강조.
 // 패널 셸(포트·전송·상태)은 content.ts에 있다.
@@ -117,6 +118,7 @@ export const EDITOR_CSS = `
 .changes .warn { color: #9a6700; font-size: 11px; }
 .changes .muted { color: #59636e; }
 .changes button { font: inherit; font-size: 12px; cursor: pointer; }
+.verify .ok { color: #1a7f37; font-size: 11px; }
 .editor input:disabled, .editor select:disabled, .changes button:disabled { cursor: progress; }
 .selected-outline {
   position: fixed;
@@ -258,6 +260,44 @@ export function renderChanges(
     if (c.stale) body.append(line('warn', '페이지 표시가 사라졌을 수 있음(새로고침·HMR·재활성화로 요소가 바뀜)'));
     item.append(body, button('되돌리기', () => handlers.onRevert(c.id), disabled));
     list.append(item);
+  }
+  box.append(head, list);
+  container.replaceChildren(box);
+}
+
+export const VERIFY_STATUS_LABELS: Record<VerifyStatus, string> = {
+  match: '일치',
+  mismatch: '불일치',
+  unverifiable: '확인 불가',
+};
+
+/** 반영 확인 결과 목록(FR-5). 항목별로 위치·속성과 보낸 값·확인 값·판정을 보여준다. 비어 있으면 영역을 비운다. */
+export function renderVerify(container: HTMLElement, items: readonly VerifyItem[]): void {
+  if (items.length === 0) {
+    container.replaceChildren();
+    return;
+  }
+  const box = document.createElement('div');
+  box.className = 'changes verify';
+
+  const head = document.createElement('p');
+  head.className = 'head';
+  head.append(`반영 확인 ${items.length}건`);
+
+  const list = document.createElement('ul');
+  for (const item of items) {
+    const entry = document.createElement('li');
+    const body = document.createElement('div');
+    body.className = 'body';
+    const where = `${formatSourceLocation(item.info.source)}${item.info.source.inherited ? ' (조상 위치)' : ''}`;
+    body.append(line('path', where));
+    body.append(line('diff', `${item.property}: ${item.after}`));
+    // 요소마다 확인 값이 다를 수 있어 서로 다른 값만 모아 보여준다. 확인 불가(빈 값)면 —.
+    const actuals = [...new Set(item.elements.map((e) => e.actual).filter((value) => value !== ''))];
+    body.append(line('diff', `확인 값: ${actuals.length > 0 ? actuals.join(', ') : '—'}`));
+    body.append(line(item.status === 'match' ? 'ok' : item.status === 'mismatch' ? 'warn' : 'muted', VERIFY_STATUS_LABELS[item.status]));
+    entry.append(body);
+    list.append(entry);
   }
   box.append(head, list);
   container.replaceChildren(box);

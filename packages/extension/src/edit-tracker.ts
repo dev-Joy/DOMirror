@@ -1,6 +1,7 @@
 import type { StyleChangeInput } from '@domirror/shared';
 import { AppliedStyles, type StyledElement } from './applier.js';
 import { changeKey, markStale, originalValue, recordChange, removeChange, sendable, settleSent, type LocalChange } from './change-log.js';
+import type { ReadComputed, VerifyItem } from './verify.js';
 
 // 편집 상태 조정 로직(적용 이력 + 변경 내역 + 전송 중 잠금). DOM에 의존하지 않아 가짜 요소로 테스트한다.
 
@@ -47,10 +48,23 @@ export class EditTracker {
     return changes;
   }
 
-  /** 전송 성공 정산: 보낸 key의 요소 추적을 끝내고(페이지 표시는 보낸 값 그대로) 보낸 항목을 내역에서 뺀다. 잠금은 finishSend가 푼다. */
+  /** 전송 성공 정산: 보낸 key의 요소 추적을 전송 기록으로 옮기고(페이지 표시는 보낸 값 그대로) 보낸 항목을 내역에서 뺀다. 잠금은 finishSend가 푼다. */
   endSend(log: readonly LocalChange[], sent: readonly StyleChangeInput[]): LocalChange[] {
-    for (const key of new Set(sent.map((s) => changeKey(s)))) this.#applied.forget(key);
+    for (const s of sent) {
+      this.#applied.markSent(changeKey(s), s.after, { selectorHint: s.selectorHint, source: s.source });
+    }
     return settleSent(log, sent);
+  }
+
+  /** 반영 확인할 전송 항목 수(FR-2 활성 조건). */
+  get sentCount(): number {
+    return this.#applied.sentCount;
+  }
+
+  /** 반영 확인(FR-3·FR-4): 전송 기록을 해제·비교한 결과. 전송 중이면 null(잠금, E-1)이고 상태를 바꾸지 않는다. */
+  verifySent(read: ReadComputed): VerifyItem[] | null {
+    if (this.#sending) return null;
+    return this.#applied.releaseSent(read);
   }
 
   /** 응답 처리 끝(성공·실패·예외 공통): 잠금을 푼다. */

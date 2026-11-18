@@ -1,10 +1,10 @@
 ---
 id: INT-008
 title: 소스 반영 확인 시 익스텐션 인라인 !important 값 해제·원복
-status: planned
+status: done
 priority: P2
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-18
 updated_at: 2026-11-17T16:03:47+09:00
 ---
 
@@ -47,4 +47,11 @@ updated_at: 2026-11-17T16:03:47+09:00
 - [x] 해제 대상은 전송한 항목에 한정하는가, 반영 확인 시 미전송 편집 값도 함께 원복하는가? → 답변: 전송한 항목만 해제, 미전송 편집 값은 유지 (2026-11-17)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [x] T-01 [P2] 전송 기록·해제·비교 — `applier.ts` `markSent`/`sentCount`/`releaseSent`·신규 `verify.ts`·`edit-tracker.ts` `markSent`/`verifySent` (plan Step 2~5, AC-1~AC-6) (2026-11-18)
+- [x] T-02 [P2] 패널 UI — `content.ts` `반영 확인` 버튼·상태 요약, `panel.ts` 결과 목록 (plan Step 6, FR-2·FR-5; AC-7 브라우저 실측은 미수행 — 익스텐션 자동 로드 불가, 사유는 result.md) (2026-11-18)
+- [x] T-03 [P2] README 갱신 — `:178`·`:256`·`:293`~`:294`·`:313` (plan Step 7, AC-8) (2026-11-18)
+
+## 결과
+- 완료일: 2026-11-18. 패널 `반영 확인` 버튼으로 전송한 항목의 인라인 `!important`만 해제·원복하고, 같은 동기 구간에서 computed를 보낸 값과 비교해 항목별 `일치`·`불일치`·`확인 불가`를 표시한다. 미전송 편집값·전송 잠금·`restoreAll` 동작은 유지, 서버·shared·MCP 계약 변경 0.
+- 신규 테스트 18건(A-1~A-8 applier, V-1~V-7 verify, T-1~T-3 edit-tracker) 포함 `pnpm typecheck`·`lint`·`test`(29 files/344 tests)·`build` Exit 0, 정합성 게이트 조건부-실행 1-pass `PASS_WITH_NOTES`(비차단 NOTE 3건). AC-7 브라우저 실측만 미수행(수동 확인 절차 `README.md:313`).
+상세: [result.md](result.md)

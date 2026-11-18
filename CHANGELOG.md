@@ -2,6 +2,20 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.62] - 2026-11-18
+
+### Added
+
+- INT-008 패널 전송 행에 `반영 확인` 버튼 추가: 전송한 항목의 인라인 `!important` 값을 해제하고, 해제 후 computed 값과 보낸 값을 같은 요소 문맥에서 비교해 항목별 일치·불일치·확인 불가를 표시
+- `packages/extension/src/verify.ts` 신규: `transition` 5슬롯 스냅샷/복원 기반 동기 측정(`measureReleased`), 요소·항목 판정 합산(`aggregateStatus`), 상태 줄 집계(`summarize`)
+
+### Changed
+
+- `AppliedStyles`가 전송 기록(`#sent`·`markSent`·`sentCount`·`releaseSent`)을 보관하며 `restoreAll`에서 함께 정리(재전송 시 최초 prev 유지, 재편집 요소는 pending-edit로 보존)
+- `EditTracker.endSend`가 `forget` 대신 전송 기록으로 이관하고 `verifySent`·`sentCount` 추가(전송 중 잠금 동작 유지)
+- README: 전송 후 보낸 값 표시가 반영 확인 전까지임을 명시하고, 같은 탭 확인 안내·사용법 단계·수동 확인 체크리스트 갱신
+- INT-008 완료 전이와 `result.md` 기록
+
 ## [0.1.61] - 2026-11-18
 
 ### Added

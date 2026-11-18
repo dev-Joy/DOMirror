@@ -1,5 +1,7 @@
 // 편집 즉시 반영(FR-6)과 원복(FR-8·NFR-3). 대상 요소에는 인라인 style 외에 아무것도 쓰지 않는다.
 
+import { aggregateStatus, measureReleased, type ReadComputed, type SentInfo, type VerifyItem } from './verify.js';
+
 /** 테스트에서 가짜 객체로 대체할 수 있는 최소 인라인 스타일 인터페이스. */
 export interface InlineStyle {
   readonly length: number;
@@ -60,11 +62,23 @@ interface KeyRecord {
   elements: Map<StyledElement, ElementState>;
 }
 
+/** 전송 기록(FR-1). 반영 확인 때 해제·원복 기준이다(전송 이전 인라인 값). */
+interface SentRecord {
+  property: string;
+  /** 보낸 값(마지막 전송). */
+  after: string;
+  info: SentInfo;
+  /** 요소별 전송 이전 인라인 값. 같은 key를 다시 보내도 최초값을 유지한다(D-S3). */
+  elements: Map<StyledElement, PrevInline>;
+}
+
 /**
  * 적용 이력. 변경 항목(key) 단위 원복과, 끌 때(NFR-3) 처음 손대기 전 상태로의 전체 원복을 함께 관리한다.
  */
 export class AppliedStyles {
   readonly #byKey = new Map<string, KeyRecord>();
+  /** 전송한 항목의 기록. 반영 확인(1회성) 또는 끌 때 비운다(FR-6). */
+  readonly #sent = new Map<string, SentRecord>();
   /** 요소·속성별 최초 인라인 값(전송으로 항목이 사라져도 끌 때 원복하기 위해 유지). */
   readonly #originals = new Map<StyledElement, Map<string, PrevInline>>();
   /** 처음 손대기 전 `style` 속성이 있었는지. */
@@ -119,6 +133,62 @@ export class AppliedStyles {
   }
 
   /**
+   * 전송 성공(FR-1): 보낸 항목의 요소 추적을 전송 기록으로 옮긴다. 페이지 표시는 보낸 값 그대로 두고,
+   * 반영 확인 때 전송 이전 인라인 값으로 원복한다. 우리가 인라인 적용한 적 없는 key는 무시한다.
+   * 같은 key를 다시 보내면 요소별 이전값은 먼저 보관된 값을 유지하고 보낸 값만 갱신한다(D-S3).
+   */
+  markSent(key: string, after: string, info: SentInfo): void {
+    const record = this.#byKey.get(key);
+    if (!record) return;
+    this.#byKey.delete(key);
+    const existing = this.#sent.get(key);
+    if (existing) {
+      for (const [el, state] of record.elements) if (!existing.elements.has(el)) existing.elements.set(el, state.prev);
+      existing.after = after;
+      existing.info = info;
+      return;
+    }
+    const elements = new Map<StyledElement, PrevInline>();
+    for (const [el, state] of record.elements) elements.set(el, state.prev);
+    this.#sent.set(key, { property: record.property, after, info, elements });
+  }
+
+  /** 반영 확인할 전송 항목 수(FR-2 활성 조건). */
+  get sentCount(): number {
+    return this.#sent.size;
+  }
+
+  /**
+   * 반영 확인(FR-3·FR-4): 전송한 요소를 전송 이전 인라인 값으로 원복하고 computed를 보낸 값과 비교한다.
+   * 미전송 상태로 다시 편집 중인 요소는 해제하지 않고 그 record의 이전값만 전송 이전 값으로 바꾼다(D-S2).
+   * 처리한 기록은 먼저 비운다(1회성, FR-6). 미전송 편집 항목(#byKey)은 그대로 둔다.
+   */
+  releaseSent(read: ReadComputed): VerifyItem[] {
+    const sent = [...this.#sent];
+    this.#sent.clear();
+    return sent.map(([key, record]) => {
+      const elements = [...record.elements].map(([el, prev]) => {
+        if (!el.isConnected) return { actual: '', expected: '', status: 'unverifiable', reason: 'detached' } as const;
+        const pending = this.#byKey.get(key)?.elements.get(el);
+        if (pending) {
+          // 미전송 편집값은 유지하고, 이후 되돌리면 소스 값(전송 이전 값)으로 가게 한다.
+          pending.prev = prev;
+          return { actual: '', expected: '', status: 'unverifiable', reason: 'pending-edit' } as const;
+        }
+        return measureReleased(el, record.property, record.after, prev, this.#restoreOptions(el), read);
+      });
+      return {
+        key,
+        property: record.property,
+        after: record.after,
+        info: record.info,
+        status: aggregateStatus(elements),
+        elements,
+      };
+    });
+  }
+
+  /**
    * 문서에서 분리된 요소를 항목 단위 원복 대상에서 빼고, 요소를 잃은 key를 돌려준다(E-6·HMR).
    * 요소가 하나도 남지 않은 항목은 지운다. 끌 때 원복(restoreAll)용 최초 값은 다시 붙는 경우를 위해 남긴다.
    */
@@ -142,6 +212,7 @@ export class AppliedStyles {
       for (const [property, prev] of originals) restoreStyle(el, property, prev, options);
     }
     this.#byKey.clear();
+    this.#sent.clear();
     this.#originals.clear();
     this.#hadStyleAttribute.clear();
   }

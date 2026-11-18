@@ -38,6 +38,7 @@ import {
   renderChanges,
   renderEditor,
   renderLocation,
+  renderVerify,
   type SelectionHighlight,
 } from './panel.js';
 import { createMeasureOverlay, MEASURE_CSS, type MeasureOverlay } from './overlay.js';
@@ -47,6 +48,7 @@ import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
 import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
 import { loadComments, loadEntries, loadPort, saveComments, saveEntries, savePort } from './storage.js';
+import { summarize, type ReadComputed, type VerifyItem } from './verify.js';
 
 // 진입점: 아이콘 클릭으로 주입되면 즉시 활성화되고, 이후 'domirror:toggle' 메시지로 켜고 끈다.
 // 비활성화 시 이 스크립트가 만든 DOM(Shadow 호스트 1개)을 모두 제거하고 편집한 인라인 스타일을 원복한다(NFR-3).
@@ -100,9 +102,13 @@ interface Panel {
   /** 코멘트 입력·목록 자리(FR-1·FR-7). */
   commentsSlot: HTMLElement;
   changesSlot: HTMLElement;
+  /** 반영 확인 결과 목록 자리(FR-5). */
+  verifySlot: HTMLElement;
   /** 간격 보기 토글·수치 자리(배치 G). */
   measureSlot: HTMLElement;
   setStatus(kind: StatusKind, text: string): void;
+  /** 반영 확인 버튼의 활성 상태를 현재 조건으로 맞춘다(FR-2). */
+  refreshVerify(): void;
   /** 코멘트를 서비스 워커로 보낸다(FR-3·E-5). 실패는 상태 문구로만 알린다. */
   sendComments(ids: readonly string[]): Promise<void>;
   dispose(): void;
@@ -115,6 +121,10 @@ interface SendHandlers {
   onSent(changes: StyleChangeInput[]): void;
   /** 응답 처리 끝(성공·실패·예외 공통): 잠금을 풀고 편집 필드·변경 목록을 다시 그린다. */
   onSendEnd(): void;
+  /** 반영 확인(FR-3·FR-4). 전송 중이면 null(잠금, E-1)이고 상태 변경이 없다. */
+  verifySent(read: ReadComputed): VerifyItem[] | null;
+  /** 반영 확인 버튼 활성 조건: 전송 기록 1건 이상 && 전송 중 아님(FR-2). */
+  canVerify(): boolean;
   /** 복사할 프롬프트 입력. 변경 내역이 있으면 그것, 없으면 선택 요소, 둘 다 없으면 null(FR-4). */
   promptInput(): PromptInput | null;
   comments: {
@@ -173,8 +183,8 @@ function createPanel(handlers: SendHandlers): Panel {
   title.className = 'title';
   title.textContent = 'DOMirror';
 
-  // 이후 배치가 채울 빈 자리: 위치 표시(E), 편집 필드(F), 코멘트(FR-1·FR-7), 변경 목록(F), 간격 보기(G).
-  const slots = ['location', 'editor', 'comments', 'changes', 'measure'].map((name) => {
+  // 이후 배치가 채울 빈 자리: 위치 표시(E), 편집 필드(F), 코멘트(FR-1·FR-7), 변경 목록(F), 반영 확인(FR-5), 간격 보기(G).
+  const slots = ['location', 'editor', 'comments', 'changes', 'verify', 'measure'].map((name) => {
     const section = document.createElement('section');
     section.className = 'slot';
     section.dataset.slot = name;
@@ -194,17 +204,22 @@ function createPanel(handlers: SendHandlers): Panel {
   const sendButton = document.createElement('button');
   sendButton.type = 'button';
   sendButton.textContent = '에이전트에 보내기';
+  // 전송한 항목의 인라인을 해제하고 소스 반영 결과를 확인한다(FR-2). 전송 기록이 생기기 전에는 누를 수 없다.
+  const verifyButton = document.createElement('button');
+  verifyButton.type = 'button';
+  verifyButton.textContent = '반영 확인';
+  verifyButton.disabled = true;
   // 복사는 내역을 바꾸지 않으므로 전송 중에도 누를 수 있게 유휴(disabled) 상태로 만들지 않는다(FR-1).
   const copyButton = document.createElement('button');
   copyButton.type = 'button';
   copyButton.textContent = 'AI 프롬프트 복사';
-  sendRow.append(portLabel, sendButton, copyButton);
+  sendRow.append(portLabel, sendButton, verifyButton, copyButton);
 
   const status = document.createElement('p');
   status.className = 'status';
   status.setAttribute('role', 'status');
 
-  const [locationSlot, editorSlot, commentsSlot, changesSlot, measureSlot] = slots;
+  const [locationSlot, editorSlot, commentsSlot, changesSlot, verifySlot, measureSlot] = slots;
   renderLocation(locationSlot, { kind: 'idle' });
 
   panel.append(title, ...slots, sendRow, status);
@@ -220,6 +235,14 @@ function createPanel(handlers: SendHandlers): Panel {
     const port = Number(portInput.value);
     return isValidPort(port) ? port : null;
   };
+
+  // 반영 확인 버튼의 활성 조건은 세션(전송 기록·전송 중 잠금)이 판단한다(FR-2).
+  const syncVerify = (): void => {
+    verifyButton.disabled = !handlers.canVerify();
+  };
+  // 해제 후 비교할 computed. 트래커는 인라인 style 인터페이스만 알므로 여기서 Element로 좁힌다.
+  const readComputed: ReadComputed = (el, property) =>
+    getComputedStyle(el as unknown as Element).getPropertyValue(property).trim();
 
   // 저장된 포트 복원. 사용자가 이미 입력을 바꿨다면 덮어쓰지 않는다.
   const initialValue = portInput.value;
@@ -239,6 +262,7 @@ function createPanel(handlers: SendHandlers): Panel {
   };
 
   const onSend = async (): Promise<void> => {
+    syncVerify();
     const port = readPort();
     if (port === null) {
       setStatus('error', '포트는 1~65535 사이의 정수여야 합니다');
@@ -271,10 +295,32 @@ function createPanel(handlers: SendHandlers): Panel {
       if (!disposed) {
         sendButton.disabled = false;
         handlers.onSendEnd();
+        syncVerify();
       }
     }
   };
   const onSendClick = (): void => void onSend();
+
+  // 반영 확인(FR-2~FR-5). 전송한 항목만 해제·비교하고, 결과를 목록·상태 줄에 보여준다.
+  const onVerify = (): void => {
+    const items = handlers.verifySent(readComputed);
+    if (!items) {
+      setStatus('error', '전송 중에는 반영 확인을 할 수 없습니다. 응답 후 다시 시도하세요.');
+      syncVerify();
+      return;
+    }
+    if (items.length === 0) {
+      setStatus('info', '반영 확인할 전송 항목이 없습니다');
+      syncVerify();
+      return;
+    }
+    renderVerify(verifySlot, items);
+    const { match, mismatch, unverifiable } = summarize(items);
+    const kind: StatusKind = mismatch > 0 ? 'error' : unverifiable > 0 ? 'info' : 'ok';
+    setStatus(kind, `반영 확인: 일치 ${match} · 불일치 ${mismatch} · 확인 불가 ${unverifiable}`);
+    syncVerify();
+  };
+  const onVerifyClick = (): void => onVerify();
 
   // AI 프롬프트 복사(FR-1·FR-4·FR-8). 읽기 전용이라 내역·저장소·전송 상태를 바꾸지 않는다(FR-9).
   const onCopy = async (): Promise<void> => {
@@ -330,6 +376,7 @@ function createPanel(handlers: SendHandlers): Panel {
 
   portInput.addEventListener('change', onPortChange);
   sendButton.addEventListener('click', onSendClick);
+  verifyButton.addEventListener('click', onVerifyClick);
   copyButton.addEventListener('click', onCopyClick);
 
   return {
@@ -339,13 +386,16 @@ function createPanel(handlers: SendHandlers): Panel {
     editorSlot,
     commentsSlot,
     changesSlot,
+    verifySlot,
     measureSlot,
     setStatus,
+    refreshVerify: syncVerify,
     sendComments,
     dispose() {
       disposed = true;
       portInput.removeEventListener('change', onPortChange);
       sendButton.removeEventListener('click', onSendClick);
+      verifyButton.removeEventListener('click', onVerifyClick);
       copyButton.removeEventListener('click', onCopyClick);
       host.remove();
     },
@@ -385,6 +435,8 @@ class EditSession {
   #saveQueue: Promise<void> = Promise.resolve();
   #selected: Element | null = null;
   #log: LocalChange[] = [];
+  /** 마지막 반영 확인 결과. 다음 반영 확인·전송·끄기 때까지 유지한다(FR-5). */
+  #verify: VerifyItem[] = [];
   #disposed = false;
 
   constructor(panel: Panel) {
@@ -473,7 +525,26 @@ class EditSession {
 
   /** 전송 성공 정산: 보낸 항목을 내역에서 뺀다. 잠금은 onSendEnd가 푼다. */
   onSent(sent: StyleChangeInput[]): void {
+    // 새로 보낸 항목이 있으면 이전 반영 확인 결과는 의미가 없다(FR-5).
+    this.#verify = [];
     this.#setLog(this.#tracker.endSend(this.#log, sent));
+    this.#renderVerify();
+    this.#panel.refreshVerify();
+  }
+
+  /** 반영 확인(FR-3·FR-4). 전송 중이면 null이고 상태를 바꾸지 않는다(E-1). */
+  verifySent(read: ReadComputed): VerifyItem[] | null {
+    const items = this.#tracker.verifySent(read);
+    if (!items) return null;
+    this.#verify = items;
+    this.#renderVerify();
+    this.#panel.refreshVerify();
+    return items;
+  }
+
+  /** 반영 확인 버튼 활성 조건: 전송 기록 1건 이상 && 전송 중 아님(FR-2). */
+  canVerify(): boolean {
+    return this.#tracker.sentCount > 0 && !this.#tracker.sending;
   }
 
   /** 응답 처리 끝: 잠금을 풀고 다시 그린다. */
@@ -502,7 +573,8 @@ class EditSession {
     this.#highlight.dispose();
     this.#pins.dispose();
     this.#commentAnchors.clear();
-    // 페이지 표시는 원복하고 내역은 저장소에 남긴다(NFR-3·E-6).
+    this.#verify = [];
+    // 페이지 표시는 원복하고 내역은 저장소에 남긴다(NFR-3·E-6). 전송 기록도 함께 비운다(FR-6).
     this.#tracker.restoreAll();
   }
 
@@ -589,6 +661,8 @@ class EditSession {
   #renderControls(): void {
     this.#renderEditor();
     this.#renderChanges();
+    this.#renderVerify();
+    this.#panel.refreshVerify();
   }
 
   #renderEditor(): void {
@@ -608,6 +682,10 @@ class EditSession {
       { onRevert: (id) => this.#revert(id), onRevertAll: () => this.#revertAll() },
       this.#tracker.sending,
     );
+  }
+
+  #renderVerify(): void {
+    renderVerify(this.#panel.verifySlot, this.#verify);
   }
 
   /** 코멘트 작성(FR-1·FR-2·E-1·E-7). 작성 즉시 전송을 시작한다(FR-3·D-S2). */
@@ -727,6 +805,8 @@ function activate(): void {
     collect: () => current.collect(),
     onSent: (changes) => current.onSent(changes),
     onSendEnd: () => current.onSendEnd(),
+    verifySent: (read) => current.verifySent(read),
+    canVerify: () => current.canVerify(),
     promptInput: () => current.promptInput(),
     comments: {
       beginSend: (ids) => current.beginCommentSend(ids),

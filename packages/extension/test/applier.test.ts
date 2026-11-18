@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AppliedStyles, applyStyle, restoreStyle } from '../src/applier.js';
+import type { ReadComputed } from '../src/verify.js';
 import { FakeElement } from './fake-element.js';
 
 describe('applyStyle / restoreStyle', () => {
@@ -135,3 +136,131 @@ describe('AppliedStyles', () => {
     expect(el.decls.get('padding-top')).toEqual({ value: '10px', priority: 'important' });
   });
 });
+
+const SRC = { file: 'src/App.vue', line: 5, column: 7, inherited: false };
+const INFO = { selectorHint: 'li.item', source: SRC };
+/** 인라인 값만 보는 reader(규칙값 없음). */
+const inlineReader: ReadComputed = (el, property) => el.style.getPropertyValue(property);
+
+describe('AppliedStyles: 전송 기록·반영 확인', () => {
+  it('A-1. markSent는 인라인을 보낸 값 그대로 두고 sentCount만 늘린다 (FR-1·AC-1)', () => {
+    const el = new FakeElement({ 'padding-top': '4px' });
+    const applied = new AppliedStyles();
+    applied.apply('k', el, 'padding-top', '10px', '4px');
+    applied.markSent('k', '10px', INFO);
+    expect(el.decls.get('padding-top')).toEqual({ value: '10px', priority: 'important' });
+    expect(applied.sentCount).toBe(1);
+    // 전송 기록으로 옮겼으므로 되돌리기는 더 이상 추적하지 않는다(페이지 표시 유지).
+    applied.revert('k');
+    expect(el.decls.get('padding-top')).toEqual({ value: '10px', priority: 'important' });
+  });
+
+  it('A-2. releaseSent가 전송 이전 인라인 값으로 원복하고 기록을 비운다 (FR-3·AC-2)', () => {
+    const plain = new FakeElement();
+    const styled = new FakeElement({ 'padding-top': '4px' });
+    styled.decls.set('padding-top', { value: '4px', priority: 'important' });
+    const applied = new AppliedStyles();
+    applied.apply('k1', plain, 'padding-top', '10px', '0px');
+    applied.apply('k2', styled, 'padding-top', '12px', '4px');
+    applied.markSent('k1', '10px', INFO);
+    applied.markSent('k2', '12px', INFO);
+    expect(applied.sentCount).toBe(2);
+
+    const items = applied.releaseSent(inlineReader);
+    expect(items.map((i) => i.key)).toEqual(['k1', 'k2']);
+    // 원래 선언이 없던 요소는 제거하고 빈 style 속성도 지운다.
+    expect(plain.decls.size).toBe(0);
+    expect(plain.hasAttribute('style')).toBe(false);
+    // 원래 인라인이 있던 요소는 value·priority를 복원한다.
+    expect(styled.decls.get('padding-top')).toEqual({ value: '4px', priority: 'important' });
+    expect(applied.sentCount).toBe(0);
+  });
+
+  it('A-3. 반영 확인은 미전송 편집 항목을 건드리지 않고, 그 되돌리기도 그대로 동작한다 (FR-3·AC-3)', () => {
+    const sent = new FakeElement();
+    const pending = new FakeElement();
+    const applied = new AppliedStyles();
+    applied.apply('k1', sent, 'padding-top', '10px', '0px');
+    applied.apply('k2', pending, 'color', 'red', 'black');
+    applied.markSent('k1', '10px', INFO);
+    applied.releaseSent(inlineReader);
+    expect(sent.decls.size).toBe(0);
+    expect(pending.decls.get('color')).toEqual({ value: 'red', priority: 'important' });
+    applied.revert('k2');
+    expect(pending.decls.size).toBe(0);
+  });
+
+  it('A-4. 전송 뒤 같은 key를 다시 편집하면 해제하지 않고, 이어서 되돌리면 최초 값으로 간다 (D-S2·AC-4)', () => {
+    const el = new FakeElement();
+    const applied = new AppliedStyles();
+    applied.apply('k', el, 'padding-top', '10px', '0px');
+    applied.markSent('k', '10px', INFO);
+    applied.apply('k', el, 'padding-top', '30px', '10px');
+
+    const items = applied.releaseSent(inlineReader);
+    expect(items[0].elements).toEqual([{ actual: '', expected: '', status: 'unverifiable', reason: 'pending-edit' }]);
+    expect(items[0].status).toBe('unverifiable');
+    // 미전송 편집값은 그대로 두고, 이후 되돌리면 전송 이전 값(인라인 없음)으로 간다.
+    expect(el.decls.get('padding-top')).toEqual({ value: '30px', priority: 'important' });
+    applied.revert('k');
+    expect(el.decls.size).toBe(0);
+    expect(el.hasAttribute('style')).toBe(false);
+  });
+
+  it('A-5. releaseSent 뒤 restoreAll은 최초 상태를 유지하고, 끄기는 전송 기록도 비운다 (FR-6·AC-6)', () => {
+    const el = new FakeElement({ 'padding-top': '4px' });
+    const applied = new AppliedStyles();
+    applied.apply('k', el, 'padding-top', '10px', '4px');
+    applied.markSent('k', '10px', INFO);
+    applied.releaseSent(inlineReader);
+    expect(el.decls.get('padding-top')).toEqual({ value: '4px', priority: '' });
+    applied.restoreAll();
+    expect(el.decls.get('padding-top')).toEqual({ value: '4px', priority: '' });
+    expect(applied.sentCount).toBe(0);
+    expect(applied.releaseSent(inlineReader)).toEqual([]);
+
+    // 해제 전에 끄면 기록이 비고, 원래 인라인 값으로 원복한다.
+    applied.apply('k', el, 'padding-top', '10px', '4px');
+    applied.markSent('k', '10px', INFO);
+    applied.restoreAll();
+    expect(applied.sentCount).toBe(0);
+    expect(el.decls.get('padding-top')).toEqual({ value: '4px', priority: '' });
+  });
+
+  it('A-6. 분리된 요소는 detached(확인 불가)로 보고하고 아무것도 쓰지 않는다 (E-5·AC-5)', () => {
+    const el = new FakeElement();
+    const applied = new AppliedStyles();
+    applied.apply('k', el, 'padding-top', '10px', '0px');
+    applied.markSent('k', '10px', INFO);
+    el.isConnected = false;
+    const before = new Map(el.decls);
+
+    const items = applied.releaseSent(inlineReader);
+    expect(items[0].elements).toEqual([{ actual: '', expected: '', status: 'unverifiable', reason: 'detached' }]);
+    expect(items[0].status).toBe('unverifiable');
+    expect(el.decls).toEqual(before);
+  });
+
+  it('A-7. 같은 key를 다시 보내도 요소별 이전값은 최초값을 유지하고 보낸 값만 갱신한다 (D-S3·E-4)', () => {
+    const el = new FakeElement();
+    const applied = new AppliedStyles();
+    applied.apply('k', el, 'padding-top', '10px', '0px');
+    applied.markSent('k', '10px', INFO);
+    applied.apply('k', el, 'padding-top', '20px', '10px');
+    applied.markSent('k', '20px', { selectorHint: 'li.item.active', source: SRC });
+
+    expect(applied.sentCount).toBe(1);
+    const items = applied.releaseSent(inlineReader);
+    expect(items[0].after).toBe('20px');
+    expect(items[0].info.selectorHint).toBe('li.item.active');
+    expect(el.decls.size).toBe(0);
+  });
+
+  it('A-8. 우리가 적용한 적 없는 key의 markSent는 무시한다', () => {
+    const applied = new AppliedStyles();
+    applied.markSent('none', '10px', INFO);
+    expect(applied.sentCount).toBe(0);
+    expect(applied.releaseSent(inlineReader)).toEqual([]);
+  });
+});
+
