@@ -9,6 +9,8 @@ const outDir = fileURLToPath(new URL('./dist/', import.meta.url));
 const entries = [
   { entry: 'src/content.ts', fileName: 'content.js' },
   { entry: 'src/service-worker.ts', fileName: 'service-worker.js' },
+  // MAIN world 브리지. content script(ISOLATED)보다 먼저 주입한다(FR-1).
+  { entry: 'src/page-bridge.ts', fileName: 'page-bridge.js' },
 ];
 
 await rm(outDir, { recursive: true, force: true });

@@ -1,4 +1,5 @@
 import { formatSourceLocation, type ScreenCommentInput, type SendResult } from '@domirror/shared';
+import { isComponentRuntimeInfo, LINE_UNVERIFIED } from './runtime-format.js';
 
 // 화면 코멘트 순수 로직(FR-2·FR-7·E-2·E-3·E-5·E-6·E-9). 모든 함수는 새 배열을 돌려주고 입력을 바꾸지 않는다.
 // 코멘트는 작성 즉시 개별 전송하고(D-S2), 실패해도 목록에 남겨 같은 id로 재전송한다(FR-4 멱등).
@@ -62,7 +63,7 @@ const SEND_STATES: readonly string[] = ['pending', 'sending', 'sent', 'failed'];
 
 /** 저장소에서 읽은 값을 복원한다. 형식이 맞지 않는 값은 버리고, 끝나지 않은 전송은 실패로 표시한다(E-5·E-6). */
 export function normalizeLoaded(entries: readonly unknown[]): LocalComment[] {
-  return entries.filter(isLocalComment).map((c) => {
+  return entries.filter(isLocalComment).map(stripInvalidComponent).map((c) => {
     const { error: _error, ...rest } = c;
     if (c.send === 'pending' || c.send === 'sending') return { ...rest, send: 'failed' as const };
     if (c.send === 'failed') {
@@ -72,15 +73,24 @@ export function normalizeLoaded(entries: readonly unknown[]): LocalComment[] {
   });
 }
 
+/** `component` 형식이 틀리면 필드만 버린다(E-10). 나머지 필드는 그대로 둔다. */
+function stripInvalidComponent(c: LocalComment): LocalComment {
+  if (c.component === undefined || isComponentRuntimeInfo(c.component)) return c;
+  const { component: _component, ...rest } = c;
+  return rest;
+}
+
 /** 현재 페이지(`pageUrl` 일치) 코멘트만(E-9). */
 export function commentsForPage(list: readonly LocalComment[], pageUrl: string): LocalComment[] {
   return list.filter((c) => c.pageUrl === pageUrl);
 }
 
-/** 목록·툴팁의 소스 위치. 상속 위치면 `(상속)`을 덧붙인다(E-3). */
-export function commentWhere(c: Pick<LocalComment, 'source'>): string {
+/** 목록·툴팁의 소스 위치. 상속 위치면 `(상속)`, 런타임 위치의 라인을 신뢰할 수 없으면 `(라인 미확인)`을 덧붙인다(E-3·FR-5). */
+export function commentWhere(c: Pick<LocalComment, 'source'> & Pick<Partial<LocalComment>, 'component'>): string {
   const where = formatSourceLocation(c.source);
-  return c.source.inherited ? `${where} (상속)` : where;
+  const inherited = c.source.inherited ? ' (상속)' : '';
+  const unverified = c.component?.definition?.precision === 'line-unverified' ? ` (${LINE_UNVERIFIED})` : '';
+  return `${where}${inherited}${unverified}`;
 }
 
 /** 목록에 보여 줄 본문 앞부분. `max`자를 넘으면 말줄임표를 붙인다. */

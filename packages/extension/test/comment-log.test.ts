@@ -164,6 +164,27 @@ describe('normalizeLoaded', () => {
     expect(next[0]!.error).toBe('타임아웃');
     expect(next[1]!.error).toBeUndefined();
   });
+
+  it('component는 형식이 맞으면 유지하고, 틀리면 필드만 버린다 (E-10)', () => {
+    const runtime = {
+      name: 'Card',
+      definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'line-unverified' as const },
+      callSite: { file: 'src/App.tsx', line: 20, column: 7, precision: 'line-unverified' as const },
+      owners: ['Card', 'App'],
+      via: 'fiber' as const,
+    };
+    const next = normalizeLoaded([
+      comment({ id: 'keep', component: runtime }),
+      comment({ id: 'broken', component: { name: '', via: 'fiber' } as unknown as LocalComment['component'] }),
+      comment({ id: 'legacy' }),
+    ]);
+
+    expect(next.find((c) => c.id === 'keep')?.component).toEqual(runtime);
+    const broken = next.find((c) => c.id === 'broken');
+    expect(broken).toBeDefined();
+    expect(broken).not.toHaveProperty('component');
+    expect(next.find((c) => c.id === 'legacy')).not.toHaveProperty('component');
+  });
 });
 
 describe('commentsForPage', () => {
@@ -182,6 +203,11 @@ describe('commentWhere', () => {
   it('소스 위치를 사람이 읽는 형식으로 돌려주고 상속은 표시한다(E-3)', () => {
     expect(commentWhere(comment())).toBe('src/App.tsx:12:5');
     expect(commentWhere(comment({ source: { ...SOURCE, inherited: true } }))).toBe('src/App.tsx:12:5 (상속)');
+  });
+
+  it('런타임 위치의 라인을 신뢰할 수 없으면 라인 미확인을 덧붙인다 (FR-5)', () => {
+    const runtime = { name: 'Card', definition: { file: 'src/components/Card.tsx', precision: 'line-unverified' as const }, via: 'fiber' as const };
+    expect(commentWhere(comment({ component: runtime }))).toBe('src/App.tsx:12:5 (라인 미확인)');
   });
 });
 

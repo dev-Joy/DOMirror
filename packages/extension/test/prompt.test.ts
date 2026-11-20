@@ -244,3 +244,58 @@ describe('buildPrompt — 자가 점검·반영 확인 (AC-1~AC-4)', () => {
     expect(text).not.toContain('## 반영 확인');
   });
 });
+
+describe('buildPrompt — 런타임 컴포넌트 정보 (AC-7·FR-10)', () => {
+  const RUNTIME = {
+    name: 'Card',
+    definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'line-unverified' as const },
+    callSite: { file: 'src/App.tsx', line: 20, column: 7, precision: 'line-unverified' as const },
+    owners: ['Card', 'Layout', 'App'],
+    via: 'fiber' as const,
+  };
+
+  it('선택 모드: 위치 줄 뒤에 컴포넌트·계층 줄을 넣고 라인 미확인을 표시한다', () => {
+    const text = buildPrompt({
+      kind: 'selection',
+      selection: { hint: 'section.card', located: null, pageUrl: PAGE, component: RUNTIME },
+    });
+    expect(text).toContain('- 위치: 위치 미확인');
+    expect(text).toContain(
+      '- 컴포넌트: Card (정의: `src/components/Card.tsx:12:5 (라인 미확인)` / 호출부: `src/App.tsx:20:7 (라인 미확인)`)',
+    );
+    expect(text).toContain('- 계층: App › Layout › Card');
+  });
+
+  it('내역 모드: 컴포넌트가 있는 항목에만 줄을 넣고 위치·요소 줄은 그대로 둔다', () => {
+    const text = buildPrompt(changes(change({ component: RUNTIME }), change({ id: 'id-2', property: 'color' })));
+    expect(count(text, '- 컴포넌트: Card')).toBe(1);
+    expect(count(text, '- 계층: App › Layout › Card')).toBe(1);
+    expect(text).toContain('- 위치: `src/App.tsx:12:5`\n- 컴포넌트: Card');
+    expect(text).toContain('### 2. `color`\n- 위치: `src/App.tsx:12:5`\n- 요소:');
+  });
+
+  it('컴포넌트 정보가 없으면 기존 문자열과 같다', () => {
+    const withNull = buildPrompt({ kind: 'selection', selection: { hint: 'div.card', located: null, pageUrl: PAGE, component: null } });
+    const withoutField = buildPrompt({ kind: 'selection', selection: { hint: 'div.card', located: null, pageUrl: PAGE } });
+    expect(withNull).toBe(withoutField);
+    expect(withNull).not.toContain('- 컴포넌트:');
+  });
+
+  it('라인을 신뢰할 수 있으면(exact) 라인 미확인을 붙이지 않는다', () => {
+    const text = buildPrompt({
+      kind: 'selection',
+      selection: {
+        hint: 'div.card',
+        located: null,
+        pageUrl: PAGE,
+        component: {
+          name: 'Card',
+          definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'exact' },
+          via: 'devtools',
+        },
+      },
+    });
+    expect(text).toContain('- 컴포넌트: Card (정의: `src/components/Card.tsx:12:5`)');
+    expect(text).not.toContain('- 계층:');
+  });
+});

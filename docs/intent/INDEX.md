@@ -1,16 +1,17 @@
 # Intent Index
 > 이 파일은 `docs/intent/` 폴더 스캔 결과로 재작성되는 대장입니다. 직접 편집하지 않습니다.
-> Last updated: 2026-11-18
+> Last updated: 2026-11-19
 
 ## 요약
 | 상태 | planned | active | hold | done | **합계** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| 건수 | 1 | 0 | 0 | 9 | **10** |
+| 건수 | 2 | 0 | 0 | 9 | **11** |
 
 ## Planned (미착수)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
 | :--- | :--- | :--- | :--- | :--- |
 | [INT-003](planned/INT-003-zagentset-domirror-skill/intent.md) | zAgentSet용 DOMirror 스킬·서브에이전트 연동 | P2 | 0/1 | 2026-11-17 |
+| [INT-011](planned/INT-011-react-runtime-locate-prompt-fix/intent.md) | React 런타임·DevTools 연동 컴포넌트 위치 찾기와 프롬프트 기반 소스 수정 | P2 | 0/1 | 2026-11-19 |
 
 ## Active (작업 중)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |

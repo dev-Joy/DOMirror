@@ -1,4 +1,4 @@
-import { formatSourceLocation, type StyleChangeInput } from '@domirror/shared';
+import { formatSourceLocation, type ComponentRuntimeInfo, type StyleChangeInput } from '@domirror/shared';
 
 // 변경 내역 순수 로직(FR-7·FR-8·FR-9·E-1·E-4·E-6). 모든 함수는 새 배열을 돌려주고 입력을 바꾸지 않는다.
 // 원래 값 판정(요소 단위, D-2)은 applier가 하고, 여기서는 그 결과(active)로 항목을 남기거나 지운다.
@@ -8,6 +8,8 @@ export interface LocalChange extends Omit<StyleChangeInput, 'source'> {
   source: StyleChangeInput['source'] | null;
   /** 새로고침·재활성화 뒤 저장소에서 복원된 항목(E-6). 페이지 표시가 사라졌을 수 있다. */
   stale: boolean;
+  /** 프롬프트에만 쓰는 런타임 컴포넌트 정보. 전송 계약에는 넣지 않는다(FR-10·NFR-2). */
+  component?: ComponentRuntimeInfo;
 }
 
 /**
@@ -46,12 +48,12 @@ export function removeChange(log: readonly LocalChange[], id: string): LocalChan
   return log.filter((c) => c.id !== id);
 }
 
-/** 전송 대상: 위치가 있는 항목만, 로컬 전용 필드(stale)를 뺀 형태로. */
+/** 전송 대상: 위치가 있는 항목만, 로컬 전용 필드(stale·component)를 뺀 형태로. */
 export function sendable(log: readonly LocalChange[]): StyleChangeInput[] {
   const out: StyleChangeInput[] = [];
   for (const c of log) {
     if (c.source === null) continue;
-    const { stale: _stale, source, ...rest } = c;
+    const { stale: _stale, component: _component, source, ...rest } = c;
     out.push({ ...rest, source });
   }
   return out;

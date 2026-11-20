@@ -54,7 +54,9 @@ export function createMcpFactory(store: ChangeStore, commentStore: CommentStore)
         title: 'List open screen comments',
         description:
           'Returns comments written on the page in the browser that are still open. ' +
-          'Each comment has the source location (file:line:column, inherited), selector hint, page URL, body, status and id.',
+          'Each comment has the source location (file:line:column, inherited), selector hint, page URL, body, status and id. ' +
+          'Comments made on React apps without the build plugin also carry an optional component field (name, definition and call-site positions, owner chain, and location precision; line-unverified means the line is approximate). ' +
+          'To apply a comment, open the source at the reported location (or the component definition when the element location is approximate), make the change the body asks for, then call mark_comments_resolved with its id.',
         outputSchema: z.object({ comments: z.array(ScreenCommentSchema) }),
         annotations: { readOnlyHint: true },
       },
@@ -65,7 +67,9 @@ export function createMcpFactory(store: ChangeStore, commentStore: CommentStore)
       'mark_comments_resolved',
       {
         title: 'Mark screen comments as resolved',
-        description: 'Marks the given comment ids as resolved so they no longer appear in list_comments.',
+        description:
+          'Marks the given comment ids as resolved so they no longer appear in list_comments. ' +
+          'Call it only after the requested change has been applied to the source file.',
         inputSchema: z.object({ ids: z.array(z.string()).min(1) }),
         outputSchema: z.object({ resolved: z.array(z.string()), notFound: z.array(z.string()) }),
         annotations: { idempotentHint: true },

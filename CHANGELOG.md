@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.64] - 2026-11-20
+
+### Added
+
+- feat: React 런타임 위치 탐색과 컴포넌트 정보 전송 추가 (INT-011)
+
 ## [0.1.63] - 2026-11-18
 
 ### Added

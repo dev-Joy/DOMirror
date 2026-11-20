@@ -24,7 +24,7 @@ import {
   createCommentForm,
   createCommentPins,
   renderCommentList,
-  resolveCommentElement,
+  resolveCommentTarget,
   type CommentFormControl,
   type CommentListItem,
   type CommentPins,
@@ -46,6 +46,8 @@ import { createPicker, PICKER_CSS, type BlockedReason, type Picker } from './pic
 import { buildPrompt, type PromptInput } from './prompt.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
+import { LINE_UNVERIFIED, runtimeSourceLocation, runtimeSourceRefOf } from './runtime-format.js';
+import { requestRuntimeInfo, type RuntimeBridgeResult } from './runtime-bridge.js';
 import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
 import { loadComments, loadEntries, loadPort, saveComments, saveEntries, savePort } from './storage.js';
 import { summarize, type ReadComputed, type VerifyItem } from './verify.js';
@@ -434,6 +436,14 @@ class EditSession {
   /** 저장을 순서대로 실행한다(전송 시작·끝 상태가 연달아 저장된다). */
   #saveQueue: Promise<void> = Promise.resolve();
   #selected: Element | null = null;
+  /** 플러그인 위치가 없는 요소의 런타임 정보(FR-2). 플러그인 위치가 있으면 항상 null(FR-6). */
+  #runtime: RuntimeBridgeResult | null = null;
+  /** `#runtime`을 얻은 요소. 선택이 바뀌면 무효다. */
+  #runtimeEl: Element | null = null;
+  /** 선택마다 증가한다. 늦게 도착한 브리지 응답을 버리는 데 쓴다(NFR-4). */
+  #runtimeSeq = 0;
+  /** 런타임 정보를 기다리는 동안 중복 제출을 막는다. */
+  #submittingComment = false;
   #log: LocalChange[] = [];
   /** 마지막 반영 확인 결과. 다음 반영 확인·전송·끄기 때까지 유지한다(FR-5). */
   #verify: VerifyItem[] = [];
@@ -489,20 +499,76 @@ class EditSession {
   select(el: Element): void {
     this.#selected = el;
     this.#highlight.set(el);
-    const located = locate(el);
-    const component = locateComponent(el);
-    const sameSource = located ? countSameSource(formatSourceLocation(located.location)) : 0;
-    renderLocation(this.#panel.locationSlot, { kind: 'selected', hint: selectorHint(el), located, sameSource, component });
+    this.#resetRuntime();
+    this.#renderSelection();
     this.#renderEditor();
     this.#renderCommentForm();
+    // 플러그인 위치가 있으면 기존 경로만 쓴다(FR-6·NFR-1). 없을 때만 런타임에 묻는다(FR-2).
+    if (locate(el) === null) void this.#loadRuntime(el, this.#runtimeSeq);
   }
 
   blocked(reason: BlockedReason): void {
     this.#selected = null;
     this.#highlight.set(null);
+    this.#resetRuntime();
     renderLocation(this.#panel.locationSlot, { kind: 'blocked', reason });
     this.#renderEditor();
     this.#renderCommentForm();
+  }
+
+  /** 선택이 바뀌면 이전 런타임 정보와 진행 중 요청을 무효화한다. */
+  #resetRuntime(): void {
+    this.#runtime = null;
+    this.#runtimeEl = null;
+    this.#runtimeSeq += 1;
+  }
+
+  /** main world 브리지에 런타임 정보를 묻고, 응답이 현재 선택과 맞을 때만 반영한다(FR-1·FR-2). */
+  async #loadRuntime(el: Element, seq: number): Promise<void> {
+    const runtime = await requestRuntimeInfo(el);
+    if (this.#disposed || seq !== this.#runtimeSeq || this.#selected !== el) return;
+    this.#runtime = runtime;
+    this.#runtimeEl = runtime ? el : null;
+    this.#renderSelection();
+    this.#renderCommentForm();
+  }
+
+  /** 제출 시점에 런타임 정보가 아직 없으면 한 번 더 묻는다(300ms 타임아웃, FR-1). */
+  async #ensureRuntime(el: Element): Promise<RuntimeBridgeResult | null> {
+    if (locate(el) !== null) return null;
+    if (this.#runtimeEl === el && this.#runtime) return this.#runtime;
+    await this.#loadRuntime(el, this.#runtimeSeq);
+    return this.#runtimeEl === el ? this.#runtime : null;
+  }
+
+  /** 현재 선택의 위치 표시를 다시 그린다(플러그인 위치 → 런타임 순, FR-6·FR-7). */
+  #renderSelection(): void {
+    const el = this.#selected;
+    if (!el) return;
+    const located = locate(el);
+    const component = locateComponent(el);
+    const sameSource = located ? countSameSource(formatSourceLocation(located.location)) : 0;
+    renderLocation(this.#panel.locationSlot, {
+      kind: 'selected',
+      hint: selectorHint(el),
+      located,
+      sameSource,
+      component,
+      runtime: this.#runtime,
+    });
+  }
+
+  /** 현재 선택에 유효한 런타임 정보(없으면 null). */
+  #runtimeInfo(el: Element | null): RuntimeBridgeResult['info'] {
+    if (!el || this.#runtimeEl !== el) return null;
+    // 선택 후 data-domirror가 붙은 경우에도 플러그인 경로 출력을 바꾸지 않는다(D-S4).
+    if (locate(el) !== null) return null;
+    return this.#runtime?.info ?? null;
+  }
+
+  /** 플러그인 위치 없이 런타임 위치만으로 코멘트를 남길 수 있는지(FR-8). */
+  #runtimeHasSource(): boolean {
+    return runtimeSourceRefOf(this.#runtimeEl === this.#selected ? this.#runtime : null) !== null;
   }
 
   collect(): { changes: StyleChangeInput[]; excluded: number } {
@@ -520,7 +586,15 @@ class EditSession {
     if (this.#log.length > 0) return { kind: 'changes', changes: [...this.#log] };
     const el = this.#selected;
     if (!el) return null;
-    return { kind: 'selection', selection: { hint: selectorHint(el), located: locate(el), pageUrl: location.href } };
+    return {
+      kind: 'selection',
+      selection: {
+        hint: selectorHint(el),
+        located: locate(el),
+        pageUrl: location.href,
+        component: this.#runtimeInfo(el),
+      },
+    };
   }
 
   /** 전송 성공 정산: 보낸 항목을 내역에서 뺀다. 잠금은 onSendEnd가 푼다. */
@@ -601,9 +675,12 @@ class EditSession {
       return;
     }
     const located = locate(el);
+    const component = this.#runtimeInfo(el);
     const change: LocalChange = {
       id: newId(),
       source: located ? { ...located.location, inherited: located.inherited, protected: located.protected } : null,
+      /** 프롬프트에만 쓰는 로컬 전용 값이다(전송 시 `sendable`이 뺀다, FR-10·NFR-2). */
+      ...(component ? { component } : {}),
       selectorHint: selectorHint(el),
       property,
       // 적용 전에 읽는다(이 요소의 원래 값 판정에도 쓴다). 같은 key의 연속 편집이면 recordChange가 최초 값을 유지한다.
@@ -689,7 +766,20 @@ class EditSession {
   }
 
   /** 코멘트 작성(FR-1·FR-2·E-1·E-7). 작성 즉시 전송을 시작한다(FR-3·D-S2). */
-  #submitComment(body: string): void {
+  async #submitComment(body: string): Promise<void> {
+    // 런타임 정보를 기다리는 동안(최대 300ms) 같은 코멘트가 두 번 등록되지 않게 막는다.
+    if (this.#disposed || this.#submittingComment) return;
+    this.#submittingComment = true;
+    this.#renderCommentForm();
+    try {
+      await this.#submitCommentOnce(body);
+    } finally {
+      this.#submittingComment = false;
+      if (!this.#disposed) this.#renderCommentForm();
+    }
+  }
+
+  async #submitCommentOnce(body: string): Promise<void> {
     if (this.#disposed) return;
     const el = this.#selected;
     if (!el) {
@@ -709,19 +799,34 @@ class EditSession {
       return;
     }
     const located = locate(el);
-    if (!located) {
-      // E-1: 소스 위치가 없으면 고정 기준을 잃으므로 작성을 막는다.
-      this.#panel.setStatus('error', '소스 위치 없음: 이 요소와 조상에 data-domirror 속성이 없어 코멘트를 남길 수 없습니다.');
+    const runtime = located === null ? await this.#ensureRuntime(el) : null;
+    if (this.#disposed || this.#selected !== el) return;
+
+    const runtimeSource = located === null ? runtimeSourceRefOf(runtime) : null;
+    // 런타임 위치만 있으면 그 위치로 채우고 라인 정확도는 component.precision에 남긴다(Q2(a)).
+    const source = located
+      ? { ...located.location, inherited: located.inherited }
+      : runtimeSource
+        ? { ...runtimeSourceLocation(runtimeSource), inherited: false }
+        : null;
+    if (!source) {
+      // E-1: 플러그인 위치도 런타임 위치도 없으면 고정 기준을 잃으므로 작성을 막는다(FR-8).
+      this.#panel.setStatus(
+        'error',
+        '소스 위치 없음: 이 요소와 조상에 data-domirror 속성이 없고 React 런타임에서도 컴포넌트 위치를 찾지 못했습니다(React dev 빌드에서만 찾을 수 있습니다).',
+      );
       this.#renderCommentForm();
       return;
     }
+    const component = runtime?.info;
     const comment: LocalComment = {
       id: newId(),
-      source: { ...located.location, inherited: located.inherited },
+      source,
       selectorHint: selectorHint(el),
       pageUrl: location.href,
       body: text,
       createdAt: new Date().toISOString(),
+      ...(component ? { component } : {}),
       send: 'pending',
     };
     this.#commentForm.clear();
@@ -755,10 +860,13 @@ class EditSession {
     const items: CommentListItem[] = page.map((c, index) => ({
       id: c.id,
       number: index + 1,
-      where: formatSourceLocation(c.source),
+      where: c.component?.definition?.precision === 'line-unverified'
+        ? `${formatSourceLocation(c.source)} (${LINE_UNVERIFIED})`
+        : formatSourceLocation(c.source),
       inherited: c.source.inherited,
       preview: preview(c.body),
-      missing: resolveCommentElement(c) === null,
+      // 플러그인 위치가 없는 런타임 코멘트만 셀렉터 힌트로 재탐색한다(Q3(a)).
+      missing: resolveCommentTarget(c) === null,
       sameSource: countSameSource(formatSourceLocation(c.source)),
       send: c.send,
       error: c.error,
@@ -771,7 +879,7 @@ class EditSession {
   #renderCommentForm(): void {
     if (this.#disposed) return;
     const el = this.#selected;
-    const sending = this.#comments.some((c) => c.send === 'sending');
+    const sending = this.#comments.some((c) => c.send === 'sending') || this.#submittingComment;
     if (!el) {
       this.#commentForm.setState({ canSubmit: false, hint: '페이지에서 요소를 클릭해 선택하면 코멘트를 남길 수 있습니다.' });
       return;
@@ -780,10 +888,10 @@ class EditSession {
       this.#commentForm.setState({ canSubmit: false, hint: '선택한 요소가 페이지에서 사라졌습니다. 다시 선택하세요.' });
       return;
     }
-    if (!locate(el)) {
+    if (!locate(el) && !this.#runtimeHasSource()) {
       this.#commentForm.setState({
         canSubmit: false,
-        hint: '소스 위치 없음: data-domirror 속성이 있는 요소를 선택해야 코멘트를 남길 수 있습니다.',
+        hint: '소스 위치 없음: data-domirror 속성이나 React 런타임 위치가 있는 요소를 선택해야 코멘트를 남길 수 있습니다(React dev 빌드에서만 런타임 위치를 찾을 수 있습니다).',
       });
       return;
     }

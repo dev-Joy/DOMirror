@@ -259,6 +259,28 @@ export function resolveCommentElement(c: Pick<ScreenCommentInput, 'source'>): El
   return document.querySelector(sameSourceSelector(formatSourceLocation(c.source)));
 }
 
+/**
+ * `data-domirror` 위치가 없는 런타임 코멘트의 폴백. 선택자 힌트는 정확한 셀렉터가 아닐 수 있으므로
+ * 해석 실패 시 `null`(핀 생략, 목록에는 표시)이다(Q3(a)).
+ */
+export function resolveCommentElementByHint(c: Pick<ScreenCommentInput, 'selectorHint'>): Element | null {
+  try {
+    return document.querySelector(c.selectorHint);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 코멘트가 가리키는 요소. 소스 위치를 먼저 쓰고, 런타임 코멘트(`component` 보유)만 선택자 힌트로
+ * 재탐색한다. 기존 코멘트의 핀·`요소 없음` 판정은 바뀌지 않는다(NFR-1·Q3(a)).
+ */
+export function resolveCommentTarget(
+  c: Pick<ScreenCommentInput, 'source' | 'selectorHint'> & Pick<Partial<ScreenCommentInput>, 'component'>,
+): Element | null {
+  return resolveCommentElement(c) ?? (c.component ? resolveCommentElementByHint(c) : null);
+}
+
 export interface CommentPinsOptions {
   /** 핀의 대상 요소 유무가 바뀐 프레임에 1회 호출된다(목록의 "요소 없음" 갱신). */
   onElementChange?(): void;
@@ -362,14 +384,14 @@ export function createCommentPins(root: ShadowRoot, opts: CommentPinsOptions = {
     return entry;
   };
 
-  /** 고정 요소가 살아 있으면 그것을, 아니면 소스 위치 첫 일치 요소를 쓴다(E-2). */
+  /** 고정 요소가 살아 있으면 그것을, 아니면 소스 위치·선택자 힌트 순으로 첫 일치 요소를 쓴다(E-2·Q3(a)). */
   const resolve = (comment: LocalComment): Element | null => {
     const anchored = fixed.get(comment.id);
     if (anchored) {
       if (anchored.isConnected) return anchored;
       fixed.delete(comment.id);
     }
-    return resolveCommentElement(comment);
+    return resolveCommentTarget(comment);
   };
 
   const syncEl = (p: Pin): void => {

@@ -73,6 +73,32 @@ export interface ScreenComment {
   body: string;
   createdAt: string;
   status: 'open' | 'resolved';
+  /** 런타임(DevTools hook·fiber)에서 얻은 컴포넌트 정보. 없으면 생략한다(FR-9). */
+  component?: ComponentRuntimeInfo;
+}
+
+/** 런타임 위치의 정확도(FR-5). */
+export type LocationPrecision = 'exact' | 'line-unverified';
+
+export interface RuntimeSourceRef {
+  /** 프로젝트 상대 경로 우선. 못 줄이면 URL 경로. */
+  file: string;
+  /** 1-based. 미확인이면 생략한다. */
+  line?: number;
+  column?: number;
+  precision: LocationPrecision;
+}
+
+export interface ComponentRuntimeInfo {
+  /** displayName > name. 없으면 `Anonymous`. */
+  name: string;
+  /** 컴포넌트 정의 위치(선택 요소의 호스트 태그가 쓰인 위치). */
+  definition?: RuntimeSourceRef;
+  /** 컴포넌트를 사용한 JSX 위치. */
+  callSite?: RuntimeSourceRef;
+  /** 가까운 순 owner chain, 최대 `BRIDGE_OWNER_MAX`. */
+  owners?: string[];
+  via: 'plugin' | 'devtools' | 'fiber';
 }
 
 export type ScreenCommentInput = Omit<ScreenComment, 'status'>;

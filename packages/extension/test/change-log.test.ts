@@ -152,6 +152,21 @@ describe('sendable', () => {
       createdAt: '2026-11-16T00:00:00.000Z',
     });
   });
+
+  it('프롬프트용 component(로컬 전용)는 전송 계약에 넣지 않는다 (FR-10·NFR-2)', () => {
+    const log = [
+      change({
+        component: {
+          name: 'Card',
+          definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'line-unverified' },
+          via: 'fiber',
+        },
+      }),
+    ];
+    const out = sendable(log);
+    expect(out).toHaveLength(1);
+    expect(out[0]).not.toHaveProperty('component');
+  });
 });
 
 describe('settleSent', () => {

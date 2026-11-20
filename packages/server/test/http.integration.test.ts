@@ -270,4 +270,34 @@ describe('domirror server (HTTP + MCP)', () => {
       await client.close();
     }
   });
+
+  it('component 선택 필드: 있는 코멘트는 그대로, 없는 기존 코멘트도 200 (INT-011 FR-9·NFR-2·AC-6)', async () => {
+    const runtime = {
+      name: 'Card',
+      definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'line-unverified' as const },
+      callSite: { file: 'src/App.tsx', line: 20, column: 7, precision: 'line-unverified' as const },
+      owners: ['Card', 'App'],
+      via: 'fiber' as const,
+    };
+    const withComponent: ScreenCommentInput = { ...comment, id: 'cmt-runtime', component: runtime };
+    const legacy: ScreenCommentInput = { ...comment, id: 'cmt-legacy' };
+
+    const posted = await postComments(JSON.stringify({ comments: [withComponent, legacy] }), { Origin: EXTENSION_ORIGIN });
+    expect(posted.status).toBe(200);
+
+    const client = new Client({ name: 'domirror-test', version: '0.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${MCP_PATH}`)));
+    try {
+      const listed = await client.callTool({ name: 'list_comments', arguments: {} });
+      const comments = (listed.structuredContent as { comments: { id: string; component?: unknown }[] }).comments;
+      expect(comments.find((c) => c.id === 'cmt-runtime')?.component).toEqual(runtime);
+      expect(comments.find((c) => c.id === 'cmt-legacy')).not.toHaveProperty('component');
+    } finally {
+      await client.close();
+    }
+
+    // 형식이 틀린 component는 스키마 위반으로 400이다.
+    const broken = { ...comment, id: 'cmt-broken', component: { name: '', via: 'fiber' } };
+    expect((await postComments(JSON.stringify({ comments: [broken] }), { Origin: EXTENSION_ORIGIN })).status).toBe(400);
+  });
 });

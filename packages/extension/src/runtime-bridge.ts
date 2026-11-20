@@ -1,0 +1,97 @@
+import {
+  BRIDGE_CHANNEL,
+  BRIDGE_MARKER_ATTR,
+  BRIDGE_TIMEOUT_MS,
+  type ComponentRuntimeInfo,
+  type RuntimeSourceRef,
+} from '@domirror/shared';
+import { isComponentRuntimeInfo, isRuntimeSourceRef } from './runtime-format.js';
+
+/** 브리지 응답 본문 중 표시·전송에 쓰는 값만 담는다(NFR-3). */
+export interface RuntimeBridgeResult {
+  info: ComponentRuntimeInfo | null;
+  hostSource?: RuntimeSourceRef;
+}
+
+export interface BridgeResultMessage extends RuntimeBridgeResult {
+  channel: typeof BRIDGE_CHANNEL;
+  type: 'inspect:result';
+  id: string;
+}
+
+export interface BridgeRequestMessage {
+  channel: typeof BRIDGE_CHANNEL;
+  type: 'inspect';
+  id: string;
+  marker: string;
+}
+
+/** 단일 in-flight. 새 요청이 오면 이전 요청을 런타임 정보 없음으로 정산한다(NFR-4). */
+let inflight: { id: string; cancel: () => void } | null = null;
+let sequence = 0;
+
+/**
+ * 브리지 응답 화이트리스트 검증(AC-9·E-11). 채널·id가 다르거나 형식이 틀린 메시지는 버린다.
+ * 페이지 스크립트가 같은 채널로 위조 응답을 보내도 요청 id를 맞히지 못하면 통과하지 못한다.
+ */
+export function isBridgeResult(message: unknown, id: string): message is BridgeResultMessage {
+  if (typeof message !== 'object' || message === null) return false;
+  const data = message as { channel?: unknown; type?: unknown; id?: unknown; hostSource?: unknown; info?: unknown };
+  if (data.channel !== BRIDGE_CHANNEL || data.type !== 'inspect:result' || data.id !== id) return false;
+  if (data.hostSource !== undefined && !isRuntimeSourceRef(data.hostSource)) return false;
+  return data.info === null || isComponentRuntimeInfo(data.info);
+}
+
+function nextRequestId(): string {
+  sequence += 1;
+  return `dm-${Date.now().toString(36)}-${sequence}`;
+}
+
+/**
+ * 선택 요소의 런타임 컴포넌트 정보를 main world 브리지에 요청한다(FR-1).
+ * 응답이 없거나 `timeoutMs`를 넘기면 `null`(E-3). 예외를 던지지 않는다.
+ */
+export async function requestRuntimeInfo(el: Element, timeoutMs: number = BRIDGE_TIMEOUT_MS): Promise<RuntimeBridgeResult | null> {
+  // 이전 요청이 있으면 먼저 정산해야 마커·타이머가 겹치지 않는다.
+  const previous = inflight;
+  inflight = null;
+  previous?.cancel();
+
+  const id = nextRequestId();
+  let resolveResult: (result: RuntimeBridgeResult | null) => void = () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let settled = false;
+
+  const onMessage = (event: MessageEvent): void => {
+    if (event.source !== window) return;
+    if (!isBridgeResult(event.data, id)) return;
+    const { info, hostSource } = event.data;
+    settle(hostSource === undefined ? { info } : { info, hostSource });
+  };
+
+  const cleanup = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    window.removeEventListener('message', onMessage);
+    if (el.getAttribute(BRIDGE_MARKER_ATTR) === id) el.removeAttribute(BRIDGE_MARKER_ATTR);
+    if (inflight?.id === id) inflight = null;
+  };
+
+  function settle(result: RuntimeBridgeResult | null): void {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    resolveResult(result);
+  }
+
+  return new Promise<RuntimeBridgeResult | null>((resolve) => {
+    resolveResult = resolve;
+    inflight = { id, cancel: () => settle(null) };
+
+    el.setAttribute(BRIDGE_MARKER_ATTR, id);
+    window.addEventListener('message', onMessage);
+    timer = setTimeout(() => settle(null), timeoutMs);
+
+    const request: BridgeRequestMessage = { channel: BRIDGE_CHANNEL, type: 'inspect', id, marker: id };
+    window.postMessage(request, '*');
+  });
+}

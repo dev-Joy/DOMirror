@@ -1,5 +1,6 @@
-import { formatSourceLocation } from '@domirror/shared';
+import { formatSourceLocation, type ComponentRuntimeInfo } from '@domirror/shared';
 import { originalValue, type LocalChange } from './change-log.js';
+import { formatRuntimeRef, ownerChainText } from './runtime-format.js';
 import type { Located } from './source-locator.js';
 
 // 패널의 "AI 프롬프트 복사"가 클립보드에 넣을 한국어 마크다운을 만든다(FR-2~FR-7).
@@ -11,6 +12,8 @@ export interface PromptSelection {
   /** `locate(el)` 결과. null이면 위치 미확인(E-6). */
   located: Located | null;
   pageUrl: string;
+  /** 플러그인 위치가 없을 때 얻은 런타임 컴포넌트 정보(FR-10). 없으면 기존 출력과 같다. */
+  component?: ComponentRuntimeInfo | null;
 }
 
 export type PromptInput =
@@ -38,6 +41,18 @@ function where(source: PromptSource | null): string {
   if (!source) return '위치 미확인';
   const path = inlineCode(formatSourceLocation(source));
   return source.inherited ? `${path} (조상 위치)` : path;
+}
+
+/** 이름·정의 위치·호출부 위치·계층 줄(FR-10). 정확도가 낮으면 `라인 미확인`이 붙는다(FR-5). */
+function componentLines(component: ComponentRuntimeInfo | null | undefined): string[] {
+  if (!component) return [];
+  const parts: string[] = [];
+  if (component.definition) parts.push(`정의: ${inlineCode(formatRuntimeRef(component.definition))}`);
+  if (component.callSite) parts.push(`호출부: ${inlineCode(formatRuntimeRef(component.callSite))}`);
+  const lines = [parts.length > 0 ? `- 컴포넌트: ${component.name} (${parts.join(' / ')})` : `- 컴포넌트: ${component.name}`];
+  const owners = ownerChainText(component.owners);
+  if (owners !== null) lines.push(`- 계층: ${owners}`);
+  return lines;
 }
 
 /** 새 값: 값 삭제(빈 문자열)는 `(빈 값)`으로 표기한다(E-3). */
@@ -110,6 +125,7 @@ function changesPrompt(changes: readonly LocalChange[]): string {
       '',
       `### ${index + 1}. \`${c.property}\``,
       `- 위치: ${where(c.source)}`,
+      ...componentLines(c.component),
       `- 요소: ${inlineCode(c.selectorHint)}`,
       `- 이전 값: ${beforeText(c)}`,
       `- 새 값: ${valueText(c.after)}`,
@@ -133,6 +149,7 @@ function selectionPrompt(selection: PromptSelection): string {
     '아래 요소에 대한 수정 요청을 이어서 적겠습니다. 소스에서 이 요소를 찾아 요청을 반영해 주세요.',
     '',
     `- 위치: ${location}`,
+    ...componentLines(selection.component),
     `- 요소: ${inlineCode(hint)}`,
     `- 페이지: ${pageUrl}`,
     ...selectionFooter(),
