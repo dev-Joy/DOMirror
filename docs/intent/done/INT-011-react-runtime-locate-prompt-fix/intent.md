@@ -1,10 +1,10 @@
 ---
 id: INT-011
 title: React 런타임·DevTools 연동 컴포넌트 위치 찾기와 프롬프트 기반 소스 수정
-status: planned
+status: done
 priority: P2
 created: 2026-11-19
-updated: 2026-11-19
+updated: 2026-11-20
 updated_at: 2026-11-19T23:32:59+09:00
 ---
 
@@ -50,4 +50,10 @@ updated_at: 2026-11-19T23:32:59+09:00
 - [x] 분해 후보: ①플러그인 없는 위치 탐색 ②호출부 위치·계층 ③컴포넌트명 포함(계약 변경) ④반영 흐름 — 구현 단계 분할 여부 → 답변: 1개 intent 유지, plan에서 ①→②→③→④ 순서 태스크로 분할해 단계별 검증 (2026-11-19)
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [x] T-01 [P2] 착수 시 plan §3에서 ①~④로 분해 완료 (2026-11-20)
+  - 분해 내역: ① 플러그인 없는 위치 탐색(Step 1~5) ② 호출부 위치·계층(Step 3·5) ③ 컴포넌트명 포함·계약 변경(Step 5~7) ④ 반영 흐름(Step 8) — 상세: [plan.md](plan.md) §3
+
+## 결과 (Result)
+- 플러그인 없는 React dev 앱에서 main world 브리지(hook 우선·fiber 폴백)로 컴포넌트명·정의/호출부 위치·계층·정확도를 얻어 패널·코멘트 `component`·AI 프롬프트로 전달하고, 플러그인 위치가 있으면 기존 출력을 그대로 유지했다(D-S4).
+- 코멘트 스키마는 `component` optional 1개만 확장(하위 호환), MCP 도구 설명·README에 `list_comments` → 소스 수정 → `mark_comments_resolved` 흐름 명시. `lint`·`typecheck`·`test`(33 files/407 tests)·`build` Exit 0, 정합성 2-pass `PASS_WITH_NOTES`(커밋 `1bdcbd3`).
+- 상세: [result.md](result.md)

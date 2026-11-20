@@ -1,17 +1,16 @@
 # Intent Index
 > 이 파일은 `docs/intent/` 폴더 스캔 결과로 재작성되는 대장입니다. 직접 편집하지 않습니다.
-> Last updated: 2026-11-19
+> Last updated: 2026-11-20
 
 ## 요약
 | 상태 | planned | active | hold | done | **합계** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| 건수 | 2 | 0 | 0 | 9 | **11** |
+| 건수 | 1 | 0 | 0 | 10 | **11** |
 
 ## Planned (미착수)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
 | :--- | :--- | :--- | :--- | :--- |
 | [INT-003](planned/INT-003-zagentset-domirror-skill/intent.md) | zAgentSet용 DOMirror 스킬·서브에이전트 연동 | P2 | 0/1 | 2026-11-17 |
-| [INT-011](planned/INT-011-react-runtime-locate-prompt-fix/intent.md) | React 런타임·DevTools 연동 컴포넌트 위치 찾기와 프롬프트 기반 소스 수정 | P2 | 0/1 | 2026-11-19 |
 
 ## Active (작업 중)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
@@ -33,3 +32,4 @@
 | [INT-008](done/INT-008-release-inline-override-after-apply/intent.md) | 소스 반영 확인 시 익스텐션 인라인 !important 값 해제·원복 | 2026-11-18 | 전송 기록(`markSent`/`releaseSent`)·신규 `verify.ts` computed 비교·패널 `반영 확인` 버튼(일치/불일치/확인 불가)·README 갱신, 신규 테스트 18건(29 files/344 tests)·lint·typecheck·build Exit 0. AC-7 브라우저 실측 미수행, 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-008-release-inline-override-after-apply/result.md)) |
 | [INT-009](done/INT-009-color-picker-layout-props/intent.md) | CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집 | 2026-11-18 | 색상 필드 네이티브 피커(텍스트 병행)·flex/grid일 때만 레이아웃 컨테이너 속성 그룹(select)·display 편집 시 즉시 재구성, 계약·의존성 변경 0. Tier 2 검증 Pass(326 tests, ego-browser AC-7), 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-009-color-picker-layout-props/result.md)) |
 | [INT-010](done/INT-010-prompt-self-check-verify/intent.md) | AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가 | 2026-11-18 | `prompt.ts` 순수 헬퍼 `changesFooter`·`selectionFooter`로 두 모드 말미에 `## 자가 점검`·`## 반영 확인` 부착(빈 내역 제외, 시그니처·호출처·의존성 변경 0), 신규 4케이스 포함 23 passed·전체 348 passed(29 files)·lint·typecheck Exit 0, 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-010-prompt-self-check-verify/result.md)) |
+| [INT-011](done/INT-011-react-runtime-locate-prompt-fix/intent.md) | React 런타임·DevTools 연동 컴포넌트 위치 찾기와 프롬프트 기반 소스 수정 | 2026-11-20 | main world 브리지로 DevTools hook 우선·fiber 폴백 위치 탐색(컴포넌트명·정의/호출부·계층·`라인 미확인`), 코멘트 `component` optional 계약·MCP 설명·README 반영 흐름 추가. lint·typecheck·test(33 files/407 tests)·build Exit 0, 예제 브라우저 실측, 게이트 필수(하드) 2-pass PASS_WITH_NOTES(커밋 `1bdcbd3`) ([result.md](done/INT-011-react-runtime-locate-prompt-fix/result.md)) |

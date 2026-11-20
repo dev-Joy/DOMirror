@@ -2,6 +2,12 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.65] - 2026-11-20
+
+### Changed
+
+- docs: INT-011 완료 전이와 결과 기록 추가
+
 ## [0.1.64] - 2026-11-20
 
 ### Added
