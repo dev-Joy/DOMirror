@@ -17,6 +17,12 @@ export interface Injector {
   transform(code: string, id: string, ctx: InjectorContext): InjectResult | null;
 }
 
+/** 같은 컴포넌트 type의 현재 커밋 트리 fiber 수(INT-012 FR-5). 방문 상한 도달 시 capped=true → `N+` 표시. */
+export interface InstanceCount {
+  count: number; // 1 이상 정수
+  capped: boolean;
+}
+
 export interface StyleChange {
   id: string;
   source: { file: string; line: number; column: number; inherited: boolean; protected?: boolean };
@@ -26,6 +32,8 @@ export interface StyleChange {
   after: string;
   pageUrl: string;
   createdAt: string;
+  /** 변경 기록 시점의 같은 컴포넌트 화면 렌더 수(선택, INT-012 FR-8). */
+  instanceCount?: InstanceCount;
   status: 'pending' | 'applied';
 }
 

@@ -1,6 +1,8 @@
-import { BRIDGE_CHANNEL, BRIDGE_MARKER_ATTR, type ComponentRuntimeInfo, type RuntimeSourceRef } from '@domirror/shared';
+import { BRIDGE_CHANNEL, BRIDGE_MARKER_ATTR } from '@domirror/shared';
 import { fiberFromDevtools, type DevtoolsHook } from './devtools-hook.js';
-import { describeRuntime, fiberFromNode } from './react-runtime.js';
+import { fiberFromNode } from './react-runtime.js';
+import type { RuntimeBridgeResult } from './runtime-bridge.js';
+import { inspectFiber } from './runtime-inspect.js';
 
 interface BridgeRequest {
   channel: string;
@@ -37,26 +39,16 @@ function markerSelector(value: string): string {
 function respond(request: BridgeRequest): void {
   const element = document.querySelector(markerSelector(request.marker));
 
-  let info: ComponentRuntimeInfo | null = null;
-  let hostSource: RuntimeSourceRef | undefined;
+  let result: RuntimeBridgeResult = { info: null };
 
   if (element) {
     const devtools = fiberFromDevtools(scope.__REACT_DEVTOOLS_GLOBAL_HOOK__, element);
     const fiber = devtools ?? fiberFromNode(element);
-    if (fiber) {
-      const described = describeRuntime(fiber, devtools ? 'devtools' : 'fiber');
-      info = described.info;
-      hostSource = described.hostSource;
-    }
+    if (fiber) result = inspectFiber(fiber, devtools ? 'devtools' : 'fiber');
   }
 
   // 응답에는 DOM 노드·함수를 담지 않는다(NFR-3).
-  window.postMessage(
-    hostSource === undefined
-      ? { channel: BRIDGE_CHANNEL, type: 'inspect:result', id: request.id, info }
-      : { channel: BRIDGE_CHANNEL, type: 'inspect:result', id: request.id, info, hostSource },
-    '*',
-  );
+  window.postMessage({ channel: BRIDGE_CHANNEL, type: 'inspect:result', id: request.id, ...result }, '*');
 }
 
 function install(): void {

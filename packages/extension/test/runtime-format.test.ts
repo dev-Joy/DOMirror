@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatInstanceCount,
   formatRuntimeRef,
   isComponentRuntimeInfo,
+  isInstanceCount,
   isRuntimeSourceRef,
   ownerChainText,
   runtimeSourceLocation,
@@ -79,5 +81,24 @@ describe('브리지·저장소 형식 검증 (E-10)', () => {
     expect(isComponentRuntimeInfo({ ...valid, definition: { file: '', precision: 'exact' } })).toBe(false);
     expect(isComponentRuntimeInfo({ ...valid, owners: ['Card', 2] })).toBe(false);
     expect(isComponentRuntimeInfo(null)).toBe(false);
+  });
+});
+
+describe('인스턴스 수 표시·검증 (INT-012 FR-6)', () => {
+  it('formatInstanceCount — 상한 도달 시 N+개', () => {
+    expect(formatInstanceCount({ count: 4, capped: false })).toBe('4개');
+    expect(formatInstanceCount({ count: 20000, capped: true })).toBe('20000+개');
+  });
+
+  it('isInstanceCount — count는 양의 정수, capped는 불리언', () => {
+    expect(isInstanceCount({ count: 1, capped: false })).toBe(true);
+    expect(isInstanceCount({ count: 20000, capped: true })).toBe(true);
+    expect(isInstanceCount({ count: 0, capped: false })).toBe(false);
+    expect(isInstanceCount({ count: 1.5, capped: false })).toBe(false);
+    expect(isInstanceCount({ count: '3', capped: false })).toBe(false);
+    expect(isInstanceCount({ count: 3 })).toBe(false);
+    expect(isInstanceCount({ count: 3, capped: 'yes' })).toBe(false);
+    expect(isInstanceCount(null)).toBe(false);
+    expect(isInstanceCount(3)).toBe(false);
   });
 });

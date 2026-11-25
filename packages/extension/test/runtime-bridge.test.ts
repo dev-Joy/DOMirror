@@ -1,6 +1,6 @@
 import { BRIDGE_CHANNEL } from '@domirror/shared';
 import { describe, expect, it } from 'vitest';
-import { isBridgeResult } from '../src/runtime-bridge.js';
+import { isBridgeResult, toRuntimeBridgeResult, type BridgeResultMessage } from '../src/runtime-bridge.js';
 
 const ID = 'dm-abc-1';
 
@@ -69,5 +69,49 @@ describe('isBridgeResult', () => {
   it('hostSource 형식이 틀리면 버린다', () => {
     expect(isBridgeResult({ ...validResult, hostSource: 'src/App.tsx' }, ID)).toBe(false);
     expect(isBridgeResult({ ...validResult, hostSource: { file: 'src/App.tsx', precision: 'none' } }, ID)).toBe(false);
+  });
+});
+
+describe('toRuntimeBridgeResult — props·instanceCount 필드 정제 (INT-012 AC-4)', () => {
+  const extras = { props: '{ title: "카드", apiToken: ••• }', instanceCount: { count: 4, capped: false } };
+
+  function pick(message: unknown) {
+    expect(isBridgeResult(message, ID)).toBe(true);
+    return toRuntimeBridgeResult(message as BridgeResultMessage);
+  }
+
+  it('유효한 props·instanceCount를 유지하고 info·hostSource를 보존한다', () => {
+    const result = pick({ ...validResult, ...extras });
+    expect(result).toEqual({ info: validResult.info, hostSource: validResult.hostSource, ...extras });
+  });
+
+  it('extras가 없으면 키는 info(+hostSource)뿐이다', () => {
+    expect(Object.keys(pick(validResult))).toEqual(['info', 'hostSource']);
+    const { hostSource: _hostSource, ...withoutHost } = validResult;
+    expect(Object.keys(pick(withoutHost))).toEqual(['info']);
+  });
+
+  it('형식이 틀린 props는 그 필드만 버린다', () => {
+    for (const props of [42, '', 'x'.repeat(1025)]) {
+      const result = pick({ ...validResult, ...extras, props });
+      expect(result).not.toHaveProperty('props');
+      expect(result.instanceCount).toEqual(extras.instanceCount);
+      expect(result.info).toEqual(validResult.info);
+    }
+    expect(pick({ ...validResult, props: 'x'.repeat(1024) }).props).toHaveLength(1024);
+  });
+
+  it('형식이 틀린 instanceCount는 그 필드만 버린다', () => {
+    const broken = [{ count: 0, capped: false }, { count: 1.5, capped: false }, { count: '3', capped: false }, { count: 3 }, { count: 3, capped: 'yes' }];
+    for (const instanceCount of broken) {
+      const result = pick({ ...validResult, ...extras, instanceCount });
+      expect(result).not.toHaveProperty('instanceCount');
+      expect(result.props).toBe(extras.props);
+      expect(result.hostSource).toEqual(validResult.hostSource);
+    }
+  });
+
+  it('형식 위반 extras가 있어도 isBridgeResult는 통과시킨다', () => {
+    expect(isBridgeResult({ ...validResult, props: 42, instanceCount: { count: 0 } }, ID)).toBe(true);
   });
 });

@@ -7,7 +7,7 @@ import {
   type SendResult,
   type StyleChangeInput,
 } from '@domirror/shared';
-import { diffLog, mergeLoaded, restoreStale, type LocalChange } from './change-log.js';
+import { changeKey, diffLog, mergeLoaded, restoreStale, type LocalChange } from './change-log.js';
 import { ChangeSync, type LogDiff } from './change-sync.js';
 import {
   addComment,
@@ -47,7 +47,7 @@ import { buildPrompt, type PromptInput } from './prompt.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
 import { LINE_UNVERIFIED, runtimeSourceLocation, runtimeSourceRefOf } from './runtime-format.js';
-import { requestRuntimeInfo, type RuntimeBridgeResult } from './runtime-bridge.js';
+import { requestRuntimeInfo, type RuntimeBridgeResult, type RuntimeExtras } from './runtime-bridge.js';
 import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
 import { loadComments, loadEntries, loadPort, saveComments, saveEntries, savePort } from './storage.js';
 import { summarize, type ReadComputed, type VerifyItem } from './verify.js';
@@ -440,6 +440,8 @@ class EditSession {
   #runtime: RuntimeBridgeResult | null = null;
   /** `#runtime`을 얻은 요소. 선택이 바뀌면 무효다. */
   #runtimeEl: Element | null = null;
+  /** 변경 항목(changeKey)별 props 요약. props는 메모리에만 둔다 — chrome.storage·전송 금지(NFR-4). */
+  #changeProps = new Map<string, string>();
   /** 선택마다 증가한다. 늦게 도착한 브리지 응답을 버리는 데 쓴다(NFR-4). */
   #runtimeSeq = 0;
   /** 런타임 정보를 기다리는 동안 중복 제출을 막는다. */
@@ -503,8 +505,8 @@ class EditSession {
     this.#renderSelection();
     this.#renderEditor();
     this.#renderCommentForm();
-    // 플러그인 위치가 있으면 기존 경로만 쓴다(FR-6·NFR-1). 없을 때만 런타임에 묻는다(FR-2).
-    if (locate(el) === null) void this.#loadRuntime(el, this.#runtimeSeq);
+    // 플러그인 위치 유무와 관계없이 브리지에 1회 묻는다(INT-012 FR-1·D-03). 플러그인 위치가 있으면 props·instanceCount만 쓴다.
+    void this.#loadRuntime(el, this.#runtimeSeq);
   }
 
   blocked(reason: BlockedReason): void {
@@ -554,7 +556,8 @@ class EditSession {
       located,
       sameSource,
       component,
-      runtime: this.#runtime,
+      runtime: located ? null : this.#runtime,
+      ...this.#runtimeExtras(el),
     });
   }
 
@@ -564,6 +567,16 @@ class EditSession {
     // 선택 후 data-domirror가 붙은 경우에도 플러그인 경로 출력을 바꾸지 않는다(D-S4).
     if (locate(el) !== null) return null;
     return this.#runtime?.info ?? null;
+  }
+
+  /** 현재 선택에 유효한 props·인스턴스 수. 플러그인 위치 여부와 무관하게 브리지 값을 쓴다(INT-012 FR-1·FR-6). */
+  #runtimeExtras(el: Element | null): RuntimeExtras {
+    if (!el || this.#runtimeEl !== el || !this.#runtime) return {};
+    const { props, instanceCount } = this.#runtime;
+    const extras: RuntimeExtras = {};
+    if (props !== undefined) extras.props = props;
+    if (instanceCount !== undefined) extras.instanceCount = instanceCount;
+    return extras;
   }
 
   /** 플러그인 위치 없이 런타임 위치만으로 코멘트를 남길 수 있는지(FR-8). */
@@ -583,7 +596,15 @@ class EditSession {
    * 없으면 선택 요소의 위치 정보, 둘 다 없으면 null이다. 선택 요소의 연결 여부는 따로 보지 않는다(E-6).
    */
   promptInput(): PromptInput | null {
-    if (this.#log.length > 0) return { kind: 'changes', changes: [...this.#log] };
+    if (this.#log.length > 0) {
+      return {
+        kind: 'changes',
+        changes: this.#log.map((c) => {
+          const props = this.#changeProps.get(changeKey(c));
+          return props === undefined ? c : { ...c, props };
+        }),
+      };
+    }
     const el = this.#selected;
     if (!el) return null;
     return {
@@ -593,6 +614,7 @@ class EditSession {
         located: locate(el),
         pageUrl: location.href,
         component: this.#runtimeInfo(el),
+        ...this.#runtimeExtras(el),
       },
     };
   }
@@ -676,11 +698,13 @@ class EditSession {
     }
     const located = locate(el);
     const component = this.#runtimeInfo(el);
+    const extras = this.#runtimeExtras(el);
     const change: LocalChange = {
       id: newId(),
       source: located ? { ...located.location, inherited: located.inherited, protected: located.protected } : null,
       /** 프롬프트에만 쓰는 로컬 전용 값이다(전송 시 `sendable`이 뺀다, FR-10·NFR-2). */
       ...(component ? { component } : {}),
+      ...(extras.instanceCount ? { instanceCount: extras.instanceCount } : {}),
       selectorHint: selectorHint(el),
       property,
       // 적용 전에 읽는다(이 요소의 원래 값 판정에도 쓴다). 같은 key의 연속 편집이면 recordChange가 최초 값을 유지한다.
@@ -693,6 +717,7 @@ class EditSession {
     // 요소가 자기 원래 값으로 돌아오면 그 요소만 원복하고, 모든 요소가 원래 값이면 항목을 지운다(D-2).
     const next = this.#tracker.edit(this.#log, el, change);
     this.#panel.setStatus('info', `${property}: ${value} 적용`);
+    if (extras.props !== undefined) this.#changeProps.set(changeKey(change), extras.props);
     this.#setLog(next);
     // display는 레이아웃 필드 구성을 바꾸므로 편집기를 다시 그린다(FR-6·FR-8).
     if (property === 'display') this.#renderEditor();

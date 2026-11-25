@@ -3,15 +3,23 @@ import {
   BRIDGE_MARKER_ATTR,
   BRIDGE_TIMEOUT_MS,
   type ComponentRuntimeInfo,
+  type InstanceCount,
   type RuntimeSourceRef,
 } from '@domirror/shared';
-import { isComponentRuntimeInfo, isRuntimeSourceRef } from './runtime-format.js';
+import { PROPS_SUMMARY_MAX } from './props-summary.js';
+import { isComponentRuntimeInfo, isInstanceCount, isRuntimeSourceRef } from './runtime-format.js';
 
 /** 브리지 응답 본문 중 표시·전송에 쓰는 값만 담는다(NFR-3). */
 export interface RuntimeBridgeResult {
   info: ComponentRuntimeInfo | null;
   hostSource?: RuntimeSourceRef;
+  /** MAIN world에서 요약·마스킹한 props(최대 PROPS_SUMMARY_MAX자). 로컬 전용 — 저장·전송 금지(NFR-4). */
+  props?: string;
+  /** 같은 컴포넌트 화면 렌더 수(FR-5). */
+  instanceCount?: InstanceCount;
 }
+
+export type RuntimeExtras = Pick<RuntimeBridgeResult, 'props' | 'instanceCount'>;
 
 export interface BridgeResultMessage extends RuntimeBridgeResult {
   channel: typeof BRIDGE_CHANNEL;
@@ -42,6 +50,17 @@ export function isBridgeResult(message: unknown, id: string): message is BridgeR
   return data.info === null || isComponentRuntimeInfo(data.info);
 }
 
+/** 검증 통과 메시지에서 표시용 값만 고른다. 형식이 틀린 props·instanceCount는 그 필드만 버린다(spec §6, AC-4). */
+export function toRuntimeBridgeResult(message: BridgeResultMessage): RuntimeBridgeResult {
+  const result: RuntimeBridgeResult = { info: message.info };
+  if (message.hostSource !== undefined) result.hostSource = message.hostSource;
+  const props: unknown = message.props;
+  if (typeof props === 'string' && props.length > 0 && props.length <= PROPS_SUMMARY_MAX) result.props = props;
+  const instanceCount: unknown = message.instanceCount;
+  if (isInstanceCount(instanceCount)) result.instanceCount = { count: instanceCount.count, capped: instanceCount.capped };
+  return result;
+}
+
 function nextRequestId(): string {
   sequence += 1;
   return `dm-${Date.now().toString(36)}-${sequence}`;
@@ -65,8 +84,7 @@ export async function requestRuntimeInfo(el: Element, timeoutMs: number = BRIDGE
   const onMessage = (event: MessageEvent): void => {
     if (event.source !== window) return;
     if (!isBridgeResult(event.data, id)) return;
-    const { info, hostSource } = event.data;
-    settle(hostSource === undefined ? { info } : { info, hostSource });
+    settle(toRuntimeBridgeResult(event.data));
   };
 
   const cleanup = (): void => {

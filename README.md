@@ -141,14 +141,14 @@ MCP 도구:
 
 | 도구 | 입력 | 출력 |
 | :--- | :--- | :--- |
-| `list_pending_changes` | 없음 | `{ changes: PendingChange[] }` — 아직 반영되지 않은 변경. 보호 영역에서 온 항목에는 `warning`이 함께 오며, 경고만 하고 차단하지 않습니다. |
+| `list_pending_changes` | 없음 | `{ changes: PendingChange[] }` — 아직 반영되지 않은 변경. 보호 영역에서 온 항목에는 `warning`이 함께 오며, 경고만 하고 차단하지 않습니다. React 런타임에서 얻은 경우 `instanceCount`(같은 컴포넌트가 화면에 렌더된 수 = 수정 시 함께 바뀌는 범위)가 함께 옵니다. |
 | `mark_changes_applied` | `{ ids: string[] }` (1개 이상) | `{ applied: string[], notFound: string[] }` |
 | `list_comments` | 없음 | `{ comments: ScreenComment[] }` — 아직 처리하지 않은(open) 코멘트. 안내된 위치의 소스를 고친 뒤 `mark_comments_resolved`로 닫습니다. |
 | `mark_comments_resolved` | `{ ids: string[] }` (1개 이상) | `{ resolved: string[], notFound: string[] }` — 요청한 수정을 소스에 반영한 뒤 호출합니다. |
 
-`StyleChange` 주요 필드: `source`(`file`·`line`·`column`·`inherited`·`protected`(선택)), `selectorHint`, `property`, `before`(`authored`: 작성 원문 또는 `null`, `computed`: 계산값), `after`, `pageUrl`, `warning`(선택: `code`=`protected-area`, `reason`=`pattern`·`node_modules`, `message`=고정 안내 문구).
+`StyleChange` 주요 필드: `source`(`file`·`line`·`column`·`inherited`·`protected`(선택)), `selectorHint`, `property`, `before`(`authored`: 작성 원문 또는 `null`, `computed`: 계산값), `after`, `pageUrl`, `warning`(선택: `code`=`protected-area`, `reason`=`pattern`·`node_modules`, `message`=고정 안내 문구), `instanceCount`(선택: `count`·`capped` — 변경을 기록한 시점에 같은 컴포넌트가 화면에 렌더된 수. 그 컴포넌트를 고치면 이만큼 함께 바뀝니다. `capped`가 `true`면 탐색 상한에 닿은 값이라 `N+`로 읽습니다). `instanceCount`는 선택 필드라 예전 페이로드도 그대로 통과합니다. props는 서버로 보내지 않습니다.
 
-`ScreenComment` 주요 필드: `source`(`file`·`line`·`column`·`inherited`), `selectorHint`, `pageUrl`, `body`, `createdAt`, `status`(`open`·`resolved`), `id`, `component`(선택: React 런타임에서 얻은 `name`, `definition`·`callSite`(`file`·`line`·`column`·`precision`), `owners`, `via`). 서버는 `POST /comments`로 받은 코멘트를 메모리에 보관하고, `list_comments`는 `open`만 돌려줍니다. `component`는 선택 필드라 예전 페이로드도 그대로 통과합니다.
+`ScreenComment` 주요 필드: `source`(`file`·`line`·`column`·`inherited`), `selectorHint`, `pageUrl`, `body`, `createdAt`, `status`(`open`·`resolved`), `id`, `component`(선택: React 런타임에서 얻은 `name`, `definition`·`callSite`(`file`·`line`·`column`·`precision`), `owners`, `via`). 서버는 `POST /comments`로 받은 코멘트를 메모리에 보관하고, `list_comments`는 `open`만 돌려줍니다. `component`는 선택 필드라 예전 페이로드도 그대로 통과합니다. 패널·프롬프트에 보이는 props와 인스턴스 수는 코멘트에 싣지 않습니다.
 
 에이전트에게 줄 프롬프트 예:
 
@@ -270,9 +270,11 @@ domirror MCP의 list_pending_changes로 대기 중인 CSS 변경을 가져와 �
 
 코멘트: 요소를 선택한 상태에서 패널의 코멘트 입력란에 의견을 적고 **코멘트 남기기**를 누르면 로컬 서버로 보내고, 화면의 해당 요소 옆에 번호 핀이 표시됩니다. 핀을 누르면 본문이 보이고 스크롤·레이아웃 변화를 따라갑니다. 패널 목록에서 전송 상태를 확인하고 실패한 코멘트는 재전송할 수 있으며, 패널을 다시 켜면(새로고침 후에도) `chrome.storage.local`에 보관된 코멘트가 복원됩니다. 에이전트는 MCP `list_comments`로 미처리 코멘트를 읽고, 안내된 위치의 소스를 고친 뒤 `mark_comments_resolved`로 표시합니다.
 
-React 앱에서 플러그인 없이 쓰기: 빌드 플러그인을 등록하지 않은 React dev 빌드에서도 요소를 선택하면 익스텐션이 페이지의 React DevTools hook 또는 DOM 노드의 fiber에서 컴포넌트 정보를 읽습니다. 패널에 `컴포넌트:`, `정의:`, `호출부:`, `계층:` 줄이 표시되고, 런타임 위치만 있으면 그 위치로 코멘트를 남길 수 있습니다. React 19에서는 스택 라인이 변환된 코드 기준이라 `라인 미확인`이 함께 표시됩니다(파일은 신뢰, 라인은 근사). 이 경로는 dev 빌드에서만 동작하며, 빌드 플러그인이 주입한 위치가 있으면 기존 표시·전송 내용이 그대로 유지됩니다(런타임 정보로 덮어쓰지 않습니다).
+React 앱에서 플러그인 없이 쓰기: 빌드 플러그인을 등록하지 않은 React dev 빌드에서도 요소를 선택하면 익스텐션이 페이지의 React DevTools hook 또는 DOM 노드의 fiber에서 컴포넌트 정보를 읽습니다. 패널에 `컴포넌트:`, `정의:`, `호출부:`, `계층:` 줄이 표시되고, 런타임 위치만 있으면 그 위치로 코멘트를 남길 수 있습니다. React 19에서는 스택 라인이 변환된 코드 기준이라 `라인 미확인`이 함께 표시됩니다(파일은 신뢰, 라인은 근사). 이 경로는 dev 빌드에서만 동작하며, 빌드 플러그인이 주입한 위치가 있으면 기존 위치·컴포넌트 이름 표시와 전송 내용이 그대로 유지됩니다(런타임 정보로 덮어쓰지 않습니다).
 
-AI 프롬프트 복사: MCP를 사용하지 않는 AI 도구(웹 채팅 등)에 넘길 구현 프롬프트를 클립보드로 복사합니다. 패널의 **AI 프롬프트 복사**를 누르면 변경 내역이 있으면 내역 전체를, 없으면 선택한 요소의 위치 정보를 한국어 마크다운으로 만듭니다. 런타임에서 컴포넌트 정보를 얻은 경우 `컴포넌트:`(정의·호출부, `라인 미확인` 표시)와 `계층:` 줄이 함께 들어갑니다. 프롬프트 말미에는 `## 자가 점검`(에이전트가 스스로 확인할 체크 목록)과 `## 반영 확인`(브라우저 확인 도구가 있으면 익스텐션이 설치되지 않은 별도 브라우저에서 계산값을 비교하고, 없으면 새로고침 후 직접 확인) 섹션이 붙습니다. 복사는 읽기 전용이라 내역·저장소·전송 상태를 바꾸지 않고 **에이전트에 보내기**와 함께 쓸 수 있습니다. 프롬프트에는 페이지 URL이 그대로 포함되므로 외부 AI 도구에 붙여 넣기 전에 확인하세요.
+props·인스턴스 수: React dev 빌드에서는 빌드 플러그인 사용 여부와 관계없이 선택한 요소의 가장 가까운 컴포넌트에 대해 `props:` 줄(예: `props: { title: "카드", apiToken: •••, children: <p> }`)과 `인스턴스: 화면에 N개(같은 컴포넌트, 수정 시 함께 바뀜)` 줄이 추가로 표시됩니다. 인스턴스 수는 "같은 소스에서 나온 요소 N개"(선택 요소의 소스 위치 기준)와 다른 값으로, 그 컴포넌트를 고치면 함께 바뀌는 범위입니다. props는 페이지 안에서 한 줄 요약으로 만들며(문자열 80자, 배열 5개, 객체 키 20개, 깊이 2, 전체 1024자까지, 함수는 `ƒ 이름`, React 요소는 `<태그>`, DOM 노드는 `[Node 태그]`), 키 이름에 `token`·`password`·`secret`·`key`·`auth`가 들어가면(대소문자 무시) 값을 `•••`로 가립니다. props는 패널과 복사한 프롬프트에만 쓰고 서버·익스텐션 저장소에는 남기지 않습니다. 변경 내역에는 인스턴스 수만 기록되어 `list_pending_changes`로 전달됩니다.
+
+AI 프롬프트 복사: MCP를 사용하지 않는 AI 도구(웹 채팅 등)에 넘길 구현 프롬프트를 클립보드로 복사합니다. 패널의 **AI 프롬프트 복사**를 누르면 변경 내역이 있으면 내역 전체를, 없으면 선택한 요소의 위치 정보를 한국어 마크다운으로 만듭니다. 런타임에서 컴포넌트 정보를 얻은 경우 `컴포넌트:`(정의·호출부, `라인 미확인` 표시)와 `계층:` 줄이 함께 들어갑니다. props·인스턴스 수를 얻은 경우 그 뒤에 `- props: <요약>`과 `- 인스턴스: N개(같은 컴포넌트, 수정 시 함께 바뀜)` 줄이 들어가고, `- props:` 줄이 하나라도 있으면 `## 자가 점검`에 "변경 스타일이 props(variant·size·className 등) 조건부인지 확인하고 해당 분기만 수정할지 판단했다" 항목이 1번 붙습니다. 프롬프트 말미에는 `## 자가 점검`(에이전트가 스스로 확인할 체크 목록)과 `## 반영 확인`(브라우저 확인 도구가 있으면 익스텐션이 설치되지 않은 별도 브라우저에서 계산값을 비교하고, 없으면 새로고침 후 직접 확인) 섹션이 붙습니다. 복사는 읽기 전용이라 내역·저장소·전송 상태를 바꾸지 않고 **에이전트에 보내기**와 함께 쓸 수 있습니다. 프롬프트에는 페이지 URL이 그대로 포함되므로 외부 AI 도구에 붙여 넣기 전에 확인하세요.
 
 ## 보안·운영 주의
 
@@ -294,7 +296,8 @@ AI 프롬프트 복사: MCP를 사용하지 않는 AI 도구(웹 채팅 등)에 
 ## 알려진 한계
 
 - **지원 범위**: Vite만 지원합니다(webpack·Next.js/Turbopack은 후속). React는 호스트 요소(`<div>` 등 소문자 태그), Vue 3는 SFC 템플릿의 네이티브 요소만 1차 지원합니다. 컴포넌트 태그·Fragment·`<template>`·`<slot>`에는 위치를 넣지 않습니다(단, `designSystem` 패턴과 일치하는 import의 컴포넌트 태그에는 컴포넌트 정보 속성을 넣습니다).
-- **React 런타임 위치(플러그인 없이)**: 페이지 main world에 주입한 브리지가 `__REACT_DEVTOOLS_GLOBAL_HOOK__`(있고 renderer가 등록된 경우) 또는 DOM 노드의 `__reactFiber$*`에서 컴포넌트 정보를 읽습니다. dev 빌드에서만 동작하고 production 빌드에서는 `위치 미확인` 안내만 남습니다. React 19에는 `_debugSource`가 없어 `_debugStack`을 쓰므로 라인은 변환 코드 기준이며 `라인 미확인`으로 표시됩니다(소스맵 역매핑은 하지 않습니다 — `NFR-7`에 따라 새 의존성 없이 시작). DevTools hook API는 비공개라 버전에 따라 바뀔 수 있고, 그때는 fiber 폴백으로 동작합니다. 계층(owner chain)은 최대 8단계이며 익명 컴포넌트는 `Anonymous`로 표시합니다. 빌드 플러그인이 주입한 위치가 있으면 런타임 정보를 표시·전송에 더하지 않아 기존 출력이 그대로 유지됩니다. iframe 내부는 범위 밖입니다.
+- **React 런타임 위치(플러그인 없이)**: 페이지 main world에 주입한 브리지가 `__REACT_DEVTOOLS_GLOBAL_HOOK__`(있고 renderer가 등록된 경우) 또는 DOM 노드의 `__reactFiber$*`에서 컴포넌트 정보를 읽습니다. dev 빌드에서만 동작하고 production 빌드에서는 `위치 미확인` 안내만 남습니다. React 19에는 `_debugSource`가 없어 `_debugStack`을 쓰므로 라인은 변환 코드 기준이며 `라인 미확인`으로 표시됩니다(소스맵 역매핑은 하지 않습니다 — `NFR-7`에 따라 새 의존성 없이 시작). DevTools hook API는 비공개라 버전에 따라 바뀔 수 있고, 그때는 fiber 폴백으로 동작합니다. 계층(owner chain)은 최대 8단계이며 익명 컴포넌트는 `Anonymous`로 표시합니다. 빌드 플러그인이 주입한 위치가 있으면 런타임의 이름·위치를 표시·전송에 더하지 않아 기존 위치·이름 출력이 그대로 유지되고, props·인스턴스 줄만 추가됩니다. iframe 내부는 범위 밖입니다.
+- **props·인스턴스 수 한계**: React dev 빌드에서만 얻습니다(production·Vue에서는 줄이 나오지 않습니다). 인스턴스 수는 선택 요소가 속한 React 루트만 세며 다른 루트의 같은 컴포넌트는 세지 않습니다. 탐색은 fiber 20,000개까지라 넘으면 `N+개`로 표시합니다. memo·forwardRef로 감싼 컴포넌트는 래퍼와 내부 함수를 따로 셉니다. 두 값 모두 선택 시점(변경 내역은 편집 시점)의 스냅샷이라 이후 재렌더로 바뀐 값은 반영하지 않습니다. 민감 키 판정은 키 이름 부분일치라 `keyboard`·`monkey` 같은 무해한 키도 가려지고(의도된 과마스킹), 목록에 없는 이름(예: `credential`)의 값이나 문자열 안에 든 민감값은 가려지지 않습니다. 프롬프트를 외부 AI 도구에 붙여 넣기 전에 props 줄을 확인하세요.
 - **컴포넌트 정보 한계**: 컴포넌트 정보는 빌드 시 이름 휴리스틱으로 만듭니다. 이름은 요소를 감싼 가장 가까운 대문자 함수·클래스 이름이며, 없으면 파일 basename을 씁니다(익명 default export도 basename). 패키지형 디자인 시스템은 사용처 측 속성이 컴포넌트 루트까지 전달될 때만 판별되고, `...props`를 넘기지 않거나 Vue에서 `inheritAttrs: false`·다중 루트면 보이지 않습니다. 전역 등록·자동 import 컴포넌트는 SFC 안에 import 출처가 없어 판별하지 않습니다. `@/ds` 같은 alias는 문자열로만 비교하며 해석하지 않습니다. `createElement` 등 런타임 생성 요소에는 속성이 없어 조상 컴포넌트 정보가 보입니다.
 - **경고 조건**: 경고는 Vite가 프로덕션 모드로 판단할 때만 출력됩니다. `NODE_ENV=development vite build`처럼 빌드하면 경고가 나오지 않습니다.
 - **iframe**: 익스텐션은 최상위 문서에만 동작합니다. iframe 내부 요소는 선택할 수 없고, iframe 안 앱의 클릭 등 동작은 막지 못합니다. 익스텐션을 켜기 전에 iframe에 포커스가 있었다면 첫 클릭 안내가 표시되지 않습니다.
@@ -326,7 +329,8 @@ AI 프롬프트 복사: MCP를 사용하지 않는 AI 도구(웹 채팅 등)에 
 - [ ] 컴포넌트 라벨: `src/ds/` 컴포넌트 호버 시 초록 라벨(`이름 · DS`), 일반 컴포넌트는 회색 라벨(`이름`)이 보이고, 선택 시 패널에 `컴포넌트:`·`정의:` 줄이 보이며 콘솔 에러가 없다.
 - [ ] React 런타임 위치(플러그인 끔): `DOMIRROR` 미설정으로 띄운 예제에서 `Card` 내부 요소를 선택하면 패널에 `컴포넌트: Card`, `정의: src/components/Card.tsx…`, `호출부: src/App.tsx…`, `계층:`과 `라인 미확인` 배지가 보이고 코멘트 작성·전송이 된다. React DevTools 설치·미설치 두 경우를 확인한다(`via`는 각각 `devtools`·`fiber`).
 - [ ] React 런타임 코멘트 계약: 플러그인을 끈 예제에서 보낸 코멘트가 `list_comments` 결과에 `component`(이름·정의·호출부·정확도)를 포함한다.
-- [ ] 플러그인 켬 회귀: 같은 예제를 `DOMIRROR=1`로 띄웠을 때 패널 표시·프롬프트·코멘트 페이로드가 이전과 같다(런타임 줄이 붙지 않는다).
+- [ ] props·인스턴스 수: 예제를 플러그인 켬(`DOMIRROR=1`)·끔으로 각각 띄우고 반복 렌더 `Card` 내부 요소를 선택하면 패널에 `props:` 줄(`apiToken: •••`)과 `인스턴스: 화면에 4개(같은 컴포넌트, 수정 시 함께 바뀜)` 줄이 보이고 콘솔 에러가 없다. 플러그인 켬에서 위치·컴포넌트명 줄은 이전과 같다.
+- [ ] 플러그인 켬 회귀: 같은 예제를 `DOMIRROR=1`로 띄웠을 때 패널 위치·이름 줄과 코멘트 페이로드는 이전과 같고 props·인스턴스 줄만 추가된다.
 - [ ] 코멘트: 요소 선택 → 코멘트 작성 → 번호 핀이 요소를 따라가고 클릭 시 본문이 보인다. 전송 성공·실패 표시와 재전송, 새로고침 후 복원이 동작하며 `<script>` 같은 본문이 텍스트로만 보인다.
 
 ## 개발

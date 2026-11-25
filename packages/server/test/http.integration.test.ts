@@ -300,4 +300,32 @@ describe('domirror server (HTTP + MCP)', () => {
     const broken = { ...comment, id: 'cmt-broken', component: { name: '', via: 'fiber' } };
     expect((await postComments(JSON.stringify({ comments: [broken] }), { Origin: EXTENSION_ORIGIN })).status).toBe(400);
   });
+
+  it('instanceCount 선택 필드: 있는 변경은 list_pending_changes에 남고, 없는 기존 변경도 200 (INT-012 FR-8·NFR-2·AC-7)', async () => {
+    const withCount: StyleChangeInput = { ...change, id: 'chg-ic', instanceCount: { count: 4, capped: false } };
+    const legacy: StyleChangeInput = { ...change, id: 'chg-legacy', property: 'margin' };
+
+    const posted = await postChanges(JSON.stringify({ changes: [withCount, legacy] }), { Origin: EXTENSION_ORIGIN });
+    expect(posted.status).toBe(200);
+
+    // 형식이 틀린 instanceCount는 스키마 위반으로 400이다.
+    const broken = { ...change, id: 'chg-broken', instanceCount: { count: 0, capped: false } };
+    expect((await postChanges(JSON.stringify({ changes: [broken] }), { Origin: EXTENSION_ORIGIN })).status).toBe(400);
+
+    const client = new Client({ name: 'domirror-test', version: '0.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${MCP_PATH}`)));
+    try {
+      const listed = await client.callTool({ name: 'list_pending_changes', arguments: {} });
+      expect(listed.isError).not.toBe(true);
+      const pending = (listed.structuredContent as { changes: { id: string; instanceCount?: unknown }[] }).changes;
+      expect(pending.find((c) => c.id === 'chg-ic')?.instanceCount).toEqual({ count: 4, capped: false });
+      expect(pending.find((c) => c.id === 'chg-legacy')).not.toHaveProperty('instanceCount');
+      expect(pending.some((c) => c.id === 'chg-broken')).toBe(false);
+
+      const marked = await client.callTool({ name: 'mark_changes_applied', arguments: { ids: ['chg-ic', 'chg-legacy'] } });
+      expect(marked.structuredContent).toEqual({ applied: ['chg-ic', 'chg-legacy'], notFound: [] });
+    } finally {
+      await client.close();
+    }
+  });
 });

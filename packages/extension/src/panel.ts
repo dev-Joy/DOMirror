@@ -1,9 +1,15 @@
-import { formatSourceLocation } from '@domirror/shared';
+import { formatSourceLocation, type InstanceCount } from '@domirror/shared';
 import { originalValue, type LocalChange } from './change-log.js';
 import type { BlockedReason } from './picker.js';
 import { parsePickerColor } from './color.js';
 import { EDITABLE_PROPERTIES, PROPERTY_GROUP_LABELS, containerOf, type PropertyGroup } from './properties.js';
-import { formatRuntimeRef, LINE_UNVERIFIED, ownerChainText, runtimeSourceRefOf } from './runtime-format.js';
+import {
+  formatInstanceCount,
+  formatRuntimeRef,
+  LINE_UNVERIFIED,
+  ownerChainText,
+  runtimeSourceRefOf,
+} from './runtime-format.js';
 import type { RuntimeBridgeResult } from './runtime-bridge.js';
 import type { Located, LocatedComponent } from './source-locator.js';
 import type { VerifyItem, VerifyStatus } from './verify.js';
@@ -21,8 +27,12 @@ export type LocationView =
       sameSource: number;
       /** 컴포넌트 정보(있으면 이름·정의 위치·DS 여부를 함께 표시, FR-9·E-9). */
       component?: LocatedComponent | null;
-      /** React DevTools hook·fiber에서 얻은 런타임 정보. 플러그인 위치가 있으면 항상 null이다(FR-6). */
+      /** React DevTools hook·fiber에서 얻은 런타임 정보. 플러그인 위치가 있으면 항상 null이다(FR-6). props·instanceCount는 별도 필드다. */
       runtime?: RuntimeBridgeResult | null;
+      /** 요약·마스킹된 props(로컬 전용, INT-012 FR-6). 플러그인 위치가 있어도 채워진다. */
+      props?: string;
+      /** 같은 컴포넌트 화면 렌더 수(INT-012 FR-6). 플러그인 위치가 있어도 채워진다. */
+      instanceCount?: InstanceCount;
     };
 
 export const LOCATION_CSS = `
@@ -105,6 +115,16 @@ function runtimeLines(runtime: RuntimeBridgeResult): HTMLParagraphElement[] {
   return rows;
 }
 
+/** props·인스턴스 줄(INT-012 FR-6). 값이 없으면 줄을 만들지 않는다. textContent만 사용(E-13). */
+function contextLines(view: { props?: string; instanceCount?: InstanceCount }): HTMLParagraphElement[] {
+  const rows: HTMLParagraphElement[] = [];
+  if (view.props !== undefined) rows.push(line('muted', `props: ${view.props}`));
+  if (view.instanceCount) {
+    rows.push(line('muted', `인스턴스: 화면에 ${formatInstanceCount(view.instanceCount)}(같은 컴포넌트, 수정 시 함께 바뀜)`));
+  }
+  return rows;
+}
+
 /** 위치 표시 영역을 `view` 상태로 다시 그린다. */
 export function renderLocation(container: HTMLElement, view: LocationView): void {
   const box = document.createElement('div');
@@ -124,11 +144,13 @@ export function renderLocation(container: HTMLElement, view: LocationView): void
     }
     box.append(path);
     box.append(...componentLines(view.component));
+    box.append(...contextLines(view));
     if (view.sameSource >= 2) box.append(line('muted', `같은 소스에서 나온 요소 ${view.sameSource}개`));
     box.append(line('muted', view.hint));
   } else if (view.runtime?.info) {
     // 플러그인 위치가 없고 런타임에서만 얻은 경우(FR-2·FR-7).
     box.append(...runtimeLines(view.runtime));
+    box.append(...contextLines(view));
     // 컴포넌트명만 얻고 위치(파일)를 못 얻으면 전송 대상에서 빠진다는 기존 경고를 유지한다(E-1·FR-5).
     if (runtimeSourceRefOf(view.runtime) === null) {
       box.append(line('warn', '소스 위치 없음: 이 요소와 조상에 위치 속성이 없어 전송 대상에서 제외됩니다.'));

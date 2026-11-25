@@ -10,6 +10,7 @@ import {
   toSendable,
   type LocalComment,
 } from '../src/comment-log.js';
+import type { RuntimeBridgeResult } from '../src/runtime-bridge.js';
 
 const SOURCE = { file: 'src/App.tsx', line: 12, column: 5, inherited: false };
 const PAGE = 'http://127.0.0.1:5173/';
@@ -221,5 +222,33 @@ describe('preview', () => {
   it('max를 넘겨 지정할 수 있다', () => {
     expect(preview('abcdef', 3)).toBe('abc…');
     expect(preview('abc', 3)).toBe('abc');
+  });
+});
+
+describe('코멘트 페이로드 — props·인스턴스 수 제외 (INT-012 FR-9·AC-8·D-S5)', () => {
+  it('브리지 응답에 props·instanceCount가 있어도 content.ts 코멘트 조립 방식으로는 component만 실린다', () => {
+    const info = {
+      name: 'Card',
+      definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'line-unverified' as const },
+      via: 'fiber' as const,
+    };
+    const runtime: RuntimeBridgeResult = {
+      info,
+      props: '{ title: "카드", apiToken: ••• }',
+      instanceCount: { count: 4, capped: false },
+    };
+    // content.ts #submitCommentOnce의 조립(`const component = runtime?.info; ...(component ? { component } : {})`)을 그대로 재현한다.
+    const component = runtime.info;
+    const local = comment(component ? { component } : {});
+    const { payload } = beginCommentSend([local], [local.id]);
+
+    expect(payload).toHaveLength(1);
+    expect(payload[0].component).toEqual(info);
+    expect(payload[0]).not.toHaveProperty('props');
+    expect(payload[0]).not.toHaveProperty('instanceCount');
+    const json = JSON.stringify(payload);
+    expect(json).not.toContain('props');
+    expect(json).not.toContain('instanceCount');
+    expect(json).not.toContain('•••');
   });
 });

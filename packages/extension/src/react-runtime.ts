@@ -13,6 +13,8 @@ export interface FiberLike {
   sibling?: FiberLike | null;
   _debugOwner?: FiberLike | null;
   _debugStack?: string | { stack?: string } | null;
+  memoizedProps?: unknown;
+  alternate?: FiberLike | null;
 }
 
 export interface StackFrame {
@@ -86,7 +88,7 @@ export function nearestComponent(fiber: FiberLike | null): FiberLike | null {
 }
 
 /** 함수·객체 타입에서 컴포넌트 이름을 고른다. displayName > name, memo·forwardRef는 감싼 대상을 따른다. */
-function nameOfType(type: unknown): string | null {
+export function nameOfType(type: unknown): string | null {
   if (typeof type === 'function') return nameOfFunction(type as { displayName?: unknown; name?: unknown });
   if (typeof type !== 'object' || type === null) return null;
 

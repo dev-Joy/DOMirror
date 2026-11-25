@@ -167,6 +167,15 @@ describe('sendable', () => {
     expect(out).toHaveLength(1);
     expect(out[0]).not.toHaveProperty('component');
   });
+
+  it('instanceCount는 전송 계약에 남기고 props 관련 필드는 없다 (INT-012 FR-8·AC-7)', () => {
+    const log = [change({ instanceCount: { count: 4, capped: false } }), change({ id: 'id-2', property: 'color' })];
+    const out = sendable(log);
+    expect(out[0].instanceCount).toEqual({ count: 4, capped: false });
+    expect(out[1]).not.toHaveProperty('instanceCount');
+    for (const c of out) expect(c).not.toHaveProperty('props');
+    expect(JSON.stringify(out)).not.toContain('props');
+  });
 });
 
 describe('settleSent', () => {

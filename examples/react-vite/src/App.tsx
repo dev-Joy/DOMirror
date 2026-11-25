@@ -20,6 +20,11 @@ export function App() {
       <Card title="카드" className="무시되는-속성">
         <p>카드 본문입니다.</p>
       </Card>
+      {['반복 카드 1', '반복 카드 2', '반복 카드 3'].map((title) => (
+        <Card key={title} title={title} apiToken="demo-secret-token">
+          <p>반복 렌더 카드입니다.</p>
+        </Card>
+      ))}
       <Button>디자인 시스템 버튼</Button>
     </main>
   );

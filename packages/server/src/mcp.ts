@@ -29,7 +29,8 @@ export function createMcpFactory(store: ChangeStore, commentStore: CommentStore)
         description:
           'Returns style changes edited in the browser that are not yet applied to source. ' +
           'Each change has the source location (file:line:column), CSS property, before value and new value. ' +
-          'Changes whose source is in a protected area (shared component or design system source) carry a warning field; confirm with the user before editing the original.',
+          'Changes whose source is in a protected area (shared component or design system source) carry a warning field; confirm with the user before editing the original.' +
+          ' An optional instanceCount ({count, capped}) is how many instances of the same component were rendered on the page when the change was recorded — editing the shared component changes all of them; capped=true means the scan limit was reached (read as N+).',
         outputSchema: z.object({ changes: z.array(PendingChangeSchema) }),
         annotations: { readOnlyHint: true },
       },

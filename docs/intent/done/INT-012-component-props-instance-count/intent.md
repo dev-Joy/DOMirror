@@ -1,7 +1,7 @@
 ---
 id: INT-012
 title: 선택 컴포넌트의 props 표시와 화면 렌더 인스턴스 수(수정 영향 범위) 안내
-status: planned
+status: done
 priority: P2
 created: 2026-11-25
 updated: 2026-11-25
@@ -51,4 +51,9 @@ updated_at: 2026-11-25T15:07:52+09:00
 - [x] props·인스턴스 수를 서버(`POST /changes`·`list_pending_changes`)까지 보낼지, 프롬프트·패널 로컬 전용으로 둘지 → 답변: 인스턴스 수만 서버로 — 변경 내역 선택 필드 instanceCount를 shared 타입·zod·sendable에 추가해 list_pending_changes에 노출, props는 패널·프롬프트·코멘트 로컬 전용 (2026-11-25) [정정 2026-11-25: 코멘트는 로컬 전용 범위에서 제외 — props는 패널·AI 프롬프트에만 포함, 20행·spec D-S5]
 
 ## 작업 (Tasks)
-- [ ] T-01 [P2] (착수 시 분해 예정)
+- [x] T-01 [P2] plan.md Step 1~9 구현·검증 — props 표시·인스턴스 수(fiber 기준)·AI 프롬프트·instanceCount 서버 계약·예제·README (Tier 3, plan §3 매핑) (2026-11-25)
+
+## 결과 (Result)
+- 선택 컴포넌트의 props 요약(민감 키 `•••` 마스킹)과 fiber 기준 화면 인스턴스 수를 패널·AI 프롬프트에 표시하고, props가 있으면 자가 점검에 props 조건부 분기 확인 항목을 추가했다. 플러그인 위치가 있어도 브리지를 호출하되 props·인스턴스 수만 덧붙인다.
+- 변경 내역에 선택 필드 `instanceCount {count, capped}`를 추가해 `list_pending_changes`로 노출(하위 호환), 코멘트 계약 diff 0줄. `lint`·`typecheck`·`test`(36 files/458 tests)·`build` exit 0, 정합성 2-pass+재판정 `PASS_WITH_NOTES`. 완료일 2026-11-25.
+- 상세: [result.md](result.md)

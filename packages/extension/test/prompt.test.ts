@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LocalChange } from '../src/change-log.js';
-import { buildPrompt, type PromptInput } from '../src/prompt.js';
+import { buildPrompt, type PromptChange, type PromptInput, type PromptSelection } from '../src/prompt.js';
 
 const SOURCE = { file: 'src/App.tsx', line: 12, column: 5, inherited: false };
 const PAGE = 'http://127.0.0.1:5173/';
@@ -297,5 +297,103 @@ describe('buildPrompt — 런타임 컴포넌트 정보 (AC-7·FR-10)', () => {
     });
     expect(text).toContain('- 컴포넌트: Card (정의: `src/components/Card.tsx:12:5`)');
     expect(text).not.toContain('- 계층:');
+  });
+});
+
+describe('buildPrompt — props·인스턴스 줄과 props 자가 점검 (INT-012 AC-6·AC-11)', () => {
+  // prompt.ts 수정 전(HEAD fa6d631) buildPrompt 출력을 그대로 캡처한 골든이다(NFR-1 바이트 동일 비교).
+  const GOLDEN_SELECTION = "# 화면 요소 위치\n\n아래 요소에 대한 수정 요청을 이어서 적겠습니다. 소스에서 이 요소를 찾아 요청을 반영해 주세요.\n\n- 위치: `src/App.tsx:12:5` (Vite 루트 기준 상대 경로, 여는 태그 `<` 위치)\n- 컴포넌트: Card (정의: `src/components/Card.tsx:12:5 (라인 미확인)`)\n- 계층: App › Card\n- 요소: `div.card`\n- 페이지: http://127.0.0.1:5173/\n\n## 자가 점검\n- [ ] 선택한 요소에 해당하는 코드만 수정했다(다른 요소·속성 변경 0건).\n- [ ] 바꾼 값이 요청한 변경과 같다(값 표기·단위 차이는 요청 기준으로 맞췄다).\n- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).\n\n## 반영 확인\n- 브라우저 확인 도구가 있으면(예: chrome-devtools-mcp): 이 익스텐션이 설치되지 않은 별도 브라우저에서 위에 적힌 페이지 URL을 새로 열어, 화면이 요청대로 바뀌었는지 확인해 주세요.\n- 편집한 탭에는 보낸 값이 인라인 `!important`로 남아 있어, 같은 탭에서 비교하면 반영에 실패해도 일치로 보입니다.\n- 브라우저 확인 도구가 없으면: 페이지를 새로고침한 뒤 요청한 변경이 화면에 반영되었는지 사용자가 직접 확인하도록 안내해 주세요.";
+  const GOLDEN_CHANGES = "# 화면 스타일 변경 반영 요청\n\n아래 CSS 변경을 소스 코드에 반영해 주세요.\n\n- 위치는 Vite 루트 기준 상대 경로(`파일:줄:열`)이며 요소 여는 태그 `<`를 가리킵니다.\n- 편집 후 소스가 바뀌어 줄이 어긋났을 수 있습니다. `요소`와 `이전 값`으로 대조한 뒤 반영하세요.\n- 페이지: http://127.0.0.1:5173/\n\n### 1. `padding-top`\n- 위치: `src/App.tsx:12:5`\n- 컴포넌트: Card (정의: `src/components/Card.tsx:12:5 (라인 미확인)`)\n- 계층: App › Card\n- 요소: `h1.title`\n- 이전 값: `8px`\n- 새 값: `12px`\n\n## 자가 점검\n- [ ] 위 1개 항목이 가리키는 선언에서 바꾼 것은 해당 속성뿐이다(다른 속성·요소 변경 0건).\n- [ ] 각 항목의 새 값이 화면에 적용된 값(`after`)과 같다(`#fff`와 `rgb()`처럼 표기가 다른 값은 정규화해 비교).\n- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).\n\n## 반영 확인\n- 브라우저 확인 도구가 있으면(예: chrome-devtools-mcp): 이 익스텐션이 설치되지 않은 별도 브라우저에서 위에 적힌 페이지 URL을 새로 열고, 각 항목 요소의 계산값을 `after`와 비교해 어긋난 항목을 보고해 주세요.\n- 편집한 탭에는 보낸 값이 인라인 `!important`로 남아 있어, 같은 탭에서 비교하면 반영에 실패해도 일치로 보입니다.\n- 브라우저 확인 도구가 없으면: 페이지를 새로고침한 뒤 각 항목이 요청대로 바뀌었는지 사용자가 직접 확인하도록 안내해 주세요.";
+  const PROPS_CHECK = '- [ ] 변경 스타일이 props(variant·size·className 등) 조건부인지 확인하고 해당 분기만 수정할지 판단했다.';
+  const LAST_CHECK = '- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).';
+  const PROPS = '{ title: "카드", apiToken: ••• }';
+  const RUNTIME = {
+    name: 'Card',
+    definition: { file: 'src/components/Card.tsx', line: 12, column: 5, precision: 'line-unverified' as const },
+    owners: ['Card', 'App'],
+    via: 'fiber' as const,
+  };
+  const SELECTION: PromptSelection = {
+    hint: 'div.card',
+    located: { location: { file: 'src/App.tsx', line: 12, column: 5 }, inherited: false, protected: false },
+    pageUrl: PAGE,
+    component: RUNTIME,
+  };
+  const CHANGE: PromptChange = change({ component: RUNTIME });
+
+  function promptChanges(...list: PromptChange[]): PromptInput {
+    return { kind: 'changes', changes: list };
+  }
+
+  function selection(extra: Partial<PromptSelection> = {}): string {
+    return buildPrompt({ kind: 'selection', selection: { ...SELECTION, ...extra } });
+  }
+
+  /** FR-12 항목이 `## 자가 점검` 안, 마지막 기존 항목 바로 다음, `## 반영 확인` 앞에 정확히 1번 있는지. */
+  function expectPropsCheck(text: string): void {
+    expect(count(text, PROPS_CHECK)).toBe(1);
+    expect(text).toContain(`${LAST_CHECK}\n${PROPS_CHECK}\n\n## 반영 확인\n`);
+    expect(text.indexOf(PROPS_CHECK)).toBeGreaterThan(text.indexOf('## 자가 점검'));
+    expect(text.indexOf(PROPS_CHECK)).toBeLessThan(text.indexOf('## 반영 확인'));
+  }
+
+  it('값이 없으면 수정 전 출력과 바이트 단위로 같다', () => {
+    expect(selection()).toBe(GOLDEN_SELECTION);
+    expect(buildPrompt(promptChanges(CHANGE))).toBe(GOLDEN_CHANGES);
+  });
+
+  it('선택 모드: 컴포넌트·계층 → props → 인스턴스 → 요소 순으로 줄을 넣는다', () => {
+    const text = selection({ props: PROPS, instanceCount: { count: 4, capped: false } });
+    expect(text).toContain(
+      `- 계층: App › Card\n- props: ${PROPS}\n- 인스턴스: 4개(같은 컴포넌트, 수정 시 함께 바뀜)\n- 요소: \`div.card\``,
+    );
+    expectPropsCheck(text);
+  });
+
+  it('상한에 닿은 인스턴스 수는 N+개로 적는다', () => {
+    const text = selection({ instanceCount: { count: 20000, capped: true } });
+    expect(text).toContain('- 인스턴스: 20000+개(같은 컴포넌트, 수정 시 함께 바뀜)');
+  });
+
+  it('내역 모드: props·인스턴스가 있는 항목에만 줄을 넣는다', () => {
+    const text = buildPrompt(
+      promptChanges(
+        { ...CHANGE, props: PROPS, instanceCount: { count: 4, capped: false } },
+        change({ id: 'id-2', property: 'color' }),
+      ),
+    );
+    expect(count(text, '- props: ')).toBe(1);
+    expect(count(text, '- 인스턴스: ')).toBe(1);
+    expect(text).toContain(`- 계층: App › Card\n- props: ${PROPS}\n- 인스턴스: 4개(같은 컴포넌트, 수정 시 함께 바뀜)\n- 요소:`);
+    expect(text).toContain('### 2. `color`\n- 위치: `src/App.tsx:12:5`\n- 요소:');
+    expectPropsCheck(text);
+  });
+
+  it('내역 모드: 여러 항목에 props가 있어도 자가 점검 항목은 1번만 붙는다 (E-16)', () => {
+    const text = buildPrompt(
+      promptChanges(
+        { ...CHANGE, props: PROPS },
+        { ...change({ id: 'id-2', property: 'color' }), props: '{}' },
+        change({ id: 'id-3', property: 'margin-top' }),
+      ),
+    );
+    expect(count(text, '- props: ')).toBe(2);
+    expectPropsCheck(text);
+  });
+
+  it('instanceCount만 있으면 인스턴스 줄은 나오지만 자가 점검 항목은 없다 (E-17)', () => {
+    const selectionText = selection({ instanceCount: { count: 4, capped: false } });
+    expect(selectionText).toContain('- 인스턴스: 4개');
+    expect(selectionText).not.toContain(PROPS_CHECK);
+    expect(selectionText.slice(selectionText.indexOf('\n\n## 자가 점검'))).toBe(
+      GOLDEN_SELECTION.slice(GOLDEN_SELECTION.indexOf('\n\n## 자가 점검')),
+    );
+
+    const changesText = buildPrompt(promptChanges({ ...CHANGE, instanceCount: { count: 4, capped: false } }));
+    expect(changesText).toContain('- 인스턴스: 4개');
+    expect(changesText).not.toContain(PROPS_CHECK);
+    expect(changesText.slice(changesText.indexOf('\n\n## 자가 점검'))).toBe(
+      GOLDEN_CHANGES.slice(GOLDEN_CHANGES.indexOf('\n\n## 자가 점검')),
+    );
   });
 });

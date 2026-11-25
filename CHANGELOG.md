@@ -2,6 +2,19 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.67] - 2026-11-25
+
+### Added
+
+- feat: 선택 컴포넌트 props 요약 표시와 화면 렌더 인스턴스 수 안내 추가 (INT-012)
+- 패널·AI 프롬프트에 `props:`(민감 키 `•••` 마스킹)·`인스턴스: N개` 줄, props가 있으면 자가 점검 항목 1줄 추가
+- `StyleChange.instanceCount` 선택 필드와 서버 스키마·`list_pending_changes` 설명 반영 (코멘트 계약은 변경 없음)
+- 신규 `props-summary`·`instance-count`·`runtime-inspect` 모듈과 단위 테스트 (458건 통과)
+
+### Changed
+
+- docs: INT-012 완료 전이와 결과 기록 추가
+
 ## [0.1.66] - 2026-11-25
 
 ### Added

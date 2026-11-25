@@ -1,5 +1,6 @@
 import type {
   ComponentRuntimeInfo,
+  InstanceCount,
   PostChangesRequest,
   PostCommentsRequest,
   ScreenComment,
@@ -13,6 +14,12 @@ import * as z from 'zod/v4';
 const PositiveInt = z.number().int().positive();
 /** 코멘트의 자유 서술 보조 문자열(`selectorHint`·`pageUrl`) 상한. */
 const TEXT_MAX = 2048;
+
+/** 같은 컴포넌트 화면 렌더 수(INT-012 FR-8). capped=true면 방문 상한 도달(`N+`). */
+const InstanceCountSchema = z.object({
+  count: PositiveInt,
+  capped: z.boolean(),
+}) satisfies z.ZodType<InstanceCount>;
 
 export const StyleChangeInputSchema = z.object({
   id: z.string().min(1),
@@ -32,6 +39,7 @@ export const StyleChangeInputSchema = z.object({
   after: z.string(),
   pageUrl: z.string(),
   createdAt: z.string(),
+  instanceCount: InstanceCountSchema.optional(),
 }) satisfies z.ZodType<StyleChangeInput>;
 
 export const StyleChangeSchema = StyleChangeInputSchema.extend({

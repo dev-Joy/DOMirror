@@ -1,6 +1,6 @@
-import { formatSourceLocation, type ComponentRuntimeInfo } from '@domirror/shared';
+import { formatSourceLocation, type ComponentRuntimeInfo, type InstanceCount } from '@domirror/shared';
 import { originalValue, type LocalChange } from './change-log.js';
-import { formatRuntimeRef, ownerChainText } from './runtime-format.js';
+import { formatInstanceCount, formatRuntimeRef, ownerChainText } from './runtime-format.js';
 import type { Located } from './source-locator.js';
 
 // 패널의 "AI 프롬프트 복사"가 클립보드에 넣을 한국어 마크다운을 만든다(FR-2~FR-7).
@@ -14,10 +14,18 @@ export interface PromptSelection {
   pageUrl: string;
   /** 플러그인 위치가 없을 때 얻은 런타임 컴포넌트 정보(FR-10). 없으면 기존 출력과 같다. */
   component?: ComponentRuntimeInfo | null;
+  /** 요약·마스킹된 props(로컬 전용, INT-012 FR-7). */
+  props?: string;
+  instanceCount?: InstanceCount;
+}
+
+/** 프롬프트용 변경 항목. props는 메모리에만 있는 값이라 저장·전송되는 LocalChange와 분리한다(NFR-4·R-8). */
+export interface PromptChange extends LocalChange {
+  props?: string;
 }
 
 export type PromptInput =
-  | { kind: 'changes'; changes: readonly LocalChange[] }
+  | { kind: 'changes'; changes: readonly PromptChange[] }
   | { kind: 'selection'; selection: PromptSelection };
 
 /** 프롬프트에 적는 위치 값. `LocalChange.source`와 같은 모양이다. */
@@ -55,6 +63,17 @@ function componentLines(component: ComponentRuntimeInfo | null | undefined): str
   return lines;
 }
 
+/** props·인스턴스 줄(INT-012 FR-7). 값이 없으면 줄을 만들지 않는다. */
+function contextLines(props: string | undefined, instanceCount: InstanceCount | undefined): string[] {
+  const lines: string[] = [];
+  if (props !== undefined) lines.push(`- props: ${props}`);
+  if (instanceCount) lines.push(`- 인스턴스: ${formatInstanceCount(instanceCount)}(같은 컴포넌트, 수정 시 함께 바뀜)`);
+  return lines;
+}
+
+/** props 줄이 있을 때만 자가 점검에 붙이는 항목(INT-012 FR-12, 문구 확정). */
+const PROPS_CHECK_ITEM = '- [ ] 변경 스타일이 props(variant·size·className 등) 조건부인지 확인하고 해당 분기만 수정할지 판단했다.';
+
 /** 새 값: 값 삭제(빈 문자열)는 `(빈 값)`으로 표기한다(E-3). */
 function valueText(after: string): string {
   return after.trim() === '' ? '(빈 값)' : inlineCode(after);
@@ -67,13 +86,14 @@ function beforeText(c: LocalChange): string {
 }
 
 /** 프롬프트 말미의 자가 점검·반영 확인 섹션. 항목이 있을 때만 붙인다(FR-1·FR-3, D-S1). */
-function changesFooter(count: number): string[] {
+function changesFooter(count: number, propsCheck = false): string[] {
   return [
     '',
     '## 자가 점검',
     `- [ ] 위 ${count}개 항목이 가리키는 선언에서 바꾼 것은 해당 속성뿐이다(다른 속성·요소 변경 0건).`,
     '- [ ] 각 항목의 새 값이 화면에 적용된 값(`after`)과 같다(`#fff`와 `rgb()`처럼 표기가 다른 값은 정규화해 비교).',
     '- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).',
+    ...(propsCheck ? [PROPS_CHECK_ITEM] : []),
     '',
     '## 반영 확인',
     '- 브라우저 확인 도구가 있으면(예: chrome-devtools-mcp): 이 익스텐션이 설치되지 않은 별도 브라우저에서 위에 적힌 페이지 URL을 새로 열고, 각 항목 요소의 계산값을 `after`와 비교해 어긋난 항목을 보고해 주세요.',
@@ -83,13 +103,14 @@ function changesFooter(count: number): string[] {
 }
 
 /** 선택 모드 말미 섹션. 선택 모드에는 `after`가 없어 값 비교 문구를 쓰지 않는다(FR-2·FR-4, D-S4). */
-function selectionFooter(): string[] {
+function selectionFooter(propsCheck = false): string[] {
   return [
     '',
     '## 자가 점검',
     '- [ ] 선택한 요소에 해당하는 코드만 수정했다(다른 요소·속성 변경 0건).',
     '- [ ] 바꾼 값이 요청한 변경과 같다(값 표기·단위 차이는 요청 기준으로 맞췄다).',
     '- [ ] 요청과 무관한 파일·포맷·네이밍 변경이 0건이다(`git diff`로 확인).',
+    ...(propsCheck ? [PROPS_CHECK_ITEM] : []),
     '',
     '## 반영 확인',
     '- 브라우저 확인 도구가 있으면(예: chrome-devtools-mcp): 이 익스텐션이 설치되지 않은 별도 브라우저에서 위에 적힌 페이지 URL을 새로 열어, 화면이 요청대로 바뀌었는지 확인해 주세요.',
@@ -98,7 +119,7 @@ function selectionFooter(): string[] {
   ];
 }
 
-function changesPrompt(changes: readonly LocalChange[]): string {
+function changesPrompt(changes: readonly PromptChange[]): string {
   const lines = [
     '# 화면 스타일 변경 반영 요청',
     '',
@@ -126,6 +147,7 @@ function changesPrompt(changes: readonly LocalChange[]): string {
       `### ${index + 1}. \`${c.property}\``,
       `- 위치: ${where(c.source)}`,
       ...componentLines(c.component),
+      ...contextLines(c.props, c.instanceCount),
       `- 요소: ${inlineCode(c.selectorHint)}`,
       `- 이전 값: ${beforeText(c)}`,
       `- 새 값: ${valueText(c.after)}`,
@@ -134,7 +156,8 @@ function changesPrompt(changes: readonly LocalChange[]): string {
     if (commonUrl === null) lines.push(`- 페이지: ${c.pageUrl}`);
   }
   // 자가 점검·반영 확인은 항목이 있을 때만 붙인다(FR-5·E-1).
-  if (changes.length > 0) lines.push(...changesFooter(changes.length));
+  // props 줄이 1개 이상이면 props 조건부 자가 점검 항목을 1번만 붙인다(INT-012 FR-12·E-16).
+  if (changes.length > 0) lines.push(...changesFooter(changes.length, changes.some((c) => c.props !== undefined)));
   return lines.join('\n');
 }
 
@@ -150,9 +173,10 @@ function selectionPrompt(selection: PromptSelection): string {
     '',
     `- 위치: ${location}`,
     ...componentLines(selection.component),
+    ...contextLines(selection.props, selection.instanceCount),
     `- 요소: ${inlineCode(hint)}`,
     `- 페이지: ${pageUrl}`,
-    ...selectionFooter(),
+    ...selectionFooter(selection.props !== undefined),
   ].join('\n');
 }
 

@@ -1,6 +1,7 @@
 import {
   formatSourceLocation,
   type ComponentRuntimeInfo,
+  type InstanceCount,
   type RuntimeSourceRef,
   type SourceLocation,
 } from '@domirror/shared';
@@ -77,4 +78,16 @@ export function isComponentRuntimeInfo(value: unknown): value is ComponentRuntim
     if (!Array.isArray(info.owners) || info.owners.some((owner) => typeof owner !== 'string')) return false;
   }
   return true;
+}
+
+/** 브리지 응답의 인스턴스 수 형식 검증(INT-012 spec §6). count는 양의 정수, capped는 불리언. */
+export function isInstanceCount(value: unknown): value is InstanceCount {
+  if (typeof value !== 'object' || value === null) return false;
+  const data = value as { count?: unknown; capped?: unknown };
+  return isPositiveInteger(data.count) && typeof data.capped === 'boolean';
+}
+
+/** 예: `4개`, `20000+개`(상한 도달, FR-6) */
+export function formatInstanceCount(value: InstanceCount): string {
+  return `${value.count}${value.capped ? '+' : ''}개`;
 }

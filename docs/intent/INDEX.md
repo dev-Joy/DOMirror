@@ -5,13 +5,12 @@
 ## 요약
 | 상태 | planned | active | hold | done | **합계** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| 건수 | 2 | 0 | 0 | 10 | **12** |
+| 건수 | 1 | 0 | 0 | 11 | **12** |
 
 ## Planned (미착수)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
 | :--- | :--- | :--- | :--- | :--- |
 | [INT-003](planned/INT-003-zagentset-domirror-skill/intent.md) | zAgentSet용 DOMirror 스킬·서브에이전트 연동 | P2 | 0/1 | 2026-11-17 |
-| [INT-012](planned/INT-012-component-props-instance-count/intent.md) | 선택 컴포넌트의 props 표시와 화면 렌더 인스턴스 수(수정 영향 범위) 안내 | P2 | 0/1 | 2026-11-25 |
 
 ## Active (작업 중)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
@@ -34,3 +33,4 @@
 | [INT-009](done/INT-009-color-picker-layout-props/intent.md) | CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집 | 2026-11-18 | 색상 필드 네이티브 피커(텍스트 병행)·flex/grid일 때만 레이아웃 컨테이너 속성 그룹(select)·display 편집 시 즉시 재구성, 계약·의존성 변경 0. Tier 2 검증 Pass(326 tests, ego-browser AC-7), 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-009-color-picker-layout-props/result.md)) |
 | [INT-010](done/INT-010-prompt-self-check-verify/intent.md) | AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가 | 2026-11-18 | `prompt.ts` 순수 헬퍼 `changesFooter`·`selectionFooter`로 두 모드 말미에 `## 자가 점검`·`## 반영 확인` 부착(빈 내역 제외, 시그니처·호출처·의존성 변경 0), 신규 4케이스 포함 23 passed·전체 348 passed(29 files)·lint·typecheck Exit 0, 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-010-prompt-self-check-verify/result.md)) |
 | [INT-011](done/INT-011-react-runtime-locate-prompt-fix/intent.md) | React 런타임·DevTools 연동 컴포넌트 위치 찾기와 프롬프트 기반 소스 수정 | 2026-11-20 | main world 브리지로 DevTools hook 우선·fiber 폴백 위치 탐색(컴포넌트명·정의/호출부·계층·`라인 미확인`), 코멘트 `component` optional 계약·MCP 설명·README 반영 흐름 추가. lint·typecheck·test(33 files/407 tests)·build Exit 0, 예제 브라우저 실측, 게이트 필수(하드) 2-pass PASS_WITH_NOTES(커밋 `1bdcbd3`) ([result.md](done/INT-011-react-runtime-locate-prompt-fix/result.md)) |
+| [INT-012](done/INT-012-component-props-instance-count/intent.md) | 선택 컴포넌트의 props 표시와 화면 렌더 인스턴스 수(수정 영향 범위) 안내 | 2026-11-25 | 패널·AI 프롬프트에 props 요약(민감 키 마스킹)과 fiber 기준 인스턴스 수 표시, 변경 내역 선택 필드 `instanceCount`를 `list_pending_changes`로 노출(코멘트 계약 diff 0). lint·typecheck·test(36 files/458 tests)·build exit 0, 게이트 필수(하드) 2-pass+재판정 PASS_WITH_NOTES ([result.md](done/INT-012-component-props-instance-count/result.md)) |
