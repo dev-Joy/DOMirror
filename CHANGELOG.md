@@ -2,6 +2,13 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.66] - 2026-11-25
+
+### Added
+
+- INT-012 intent·spec·plan: 선택 컴포넌트 props 요약 표시와 화면 렌더 인스턴스 수(수정 영향 범위) 안내 (react-anatomy 참고)
+- 아이디어 INBOX 3건(IDEA-20261125-01~03)
+
 ## [0.1.65] - 2026-11-20
 
 ### Changed
