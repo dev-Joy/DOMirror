@@ -2,6 +2,14 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.68] - 2026-11-28
+
+### Added
+
+- 3D 컴포넌트 레이어 분해도(Exploded 3D Layers) 시각화 모달 및 `<domirror-panel>` Shadow DOM 통합 토글 버튼 추가 (INT-014)
+- MAIN world React Fiber 컴포넌트 계층 스냅샷 수집(`inspect-layers` 브리지) 및 비-React 페이지용 일반 DOM 폴백 레이어 수집기 추가
+- 순수 CSS 3D 와이어프레임·라벨 레이어 카드, 드래그 회전/휠·버튼 줌/깊이 간격 슬라이더/`Reset`/`Refresh`, 호버 툴팁 및 Pick-to-Inspect(`EditSession.select`) 편집 연동 구현
+
 ## [0.1.67] - 2026-11-25
 
 ### Added

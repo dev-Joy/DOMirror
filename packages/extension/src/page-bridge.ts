@@ -1,5 +1,7 @@
 import { BRIDGE_CHANNEL, BRIDGE_MARKER_ATTR } from '@domirror/shared';
 import { fiberFromDevtools, type DevtoolsHook } from './devtools-hook.js';
+import { collectFiberLayers } from './layer-collect.js';
+import { MAX_LAYERS } from './layer-model.js';
 import { fiberFromNode } from './react-runtime.js';
 import type { RuntimeBridgeResult } from './runtime-bridge.js';
 import { inspectFiber } from './runtime-inspect.js';
@@ -9,6 +11,13 @@ interface BridgeRequest {
   type: 'inspect';
   id: string;
   marker: string;
+}
+
+interface BridgeLayersRequest {
+  channel: string;
+  type: 'inspect-layers';
+  id: string;
+  maxLayers: number;
 }
 
 interface BridgeScope {
@@ -51,14 +60,44 @@ function respond(request: BridgeRequest): void {
   window.postMessage({ channel: BRIDGE_CHANNEL, type: 'inspect:result', id: request.id, ...result }, '*');
 }
 
+function isBridgeLayersRequest(value: unknown): value is BridgeLayersRequest {
+  if (typeof value !== 'object' || value === null) return false;
+  const data = value as { channel?: unknown; type?: unknown; id?: unknown; maxLayers?: unknown };
+  return (
+    data.channel === BRIDGE_CHANNEL &&
+    data.type === 'inspect-layers' &&
+    typeof data.id === 'string' &&
+    data.id !== '' &&
+    typeof data.maxLayers === 'number' &&
+    Number.isInteger(data.maxLayers) &&
+    data.maxLayers > 0
+  );
+}
+
+function respondLayers(request: BridgeLayersRequest): void {
+  const snapshot = collectFiberLayers(document, {
+    hook: scope.__REACT_DEVTOOLS_GLOBAL_HOOK__,
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    maxLayers: Math.min(request.maxLayers, MAX_LAYERS),
+  });
+  window.postMessage({ channel: BRIDGE_CHANNEL, type: 'inspect-layers:result', id: request.id, snapshot }, '*');
+}
+
 function install(): void {
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
-    if (!isBridgeRequest(event.data)) return;
-    try {
-      respond(event.data);
-    } catch {
-      // 페이지 스크립트를 깨뜨리지 않는다. 응답이 없으면 content 측은 타임아웃으로 처리한다(E-3).
+    if (isBridgeRequest(event.data)) {
+      try {
+        respond(event.data);
+      } catch {
+        // 페이지 스크립트를 깨뜨리지 않는다. 응답이 없으면 content 측은 타임아웃으로 처리한다(E-3).
+      }
+    } else if (isBridgeLayersRequest(event.data)) {
+      try {
+        respondLayers(event.data);
+      } catch {
+        // 페이지 스크립트를 깨뜨리지 않는다. 응답이 없으면 content 측은 타임아웃으로 처리한다.
+      }
     }
   });
 }

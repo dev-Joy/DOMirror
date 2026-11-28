@@ -31,6 +31,8 @@ import {
 } from './comment-ui.js';
 import { readBefore } from './css-read.js';
 import { EditTracker } from './edit-tracker.js';
+import { createExplodedView, EXPLODED_VIEW_CSS, type ExplodedView } from './exploded-view.js';
+import { collectDomFallbackLayers } from './layer-collect.js';
 import {
   createSelectionHighlight,
   EDITOR_CSS,
@@ -47,7 +49,13 @@ import { buildPrompt, type PromptInput } from './prompt.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
 import { LINE_UNVERIFIED, runtimeSourceLocation, runtimeSourceRefOf } from './runtime-format.js';
-import { requestRuntimeInfo, type RuntimeBridgeResult, type RuntimeExtras } from './runtime-bridge.js';
+import {
+  cancelLayerSnapshotRequest,
+  requestLayerSnapshot,
+  requestRuntimeInfo,
+  type RuntimeBridgeResult,
+  type RuntimeExtras,
+} from './runtime-bridge.js';
 import { countSameSource, locate, locateComponent, selectorHint } from './source-locator.js';
 import { loadComments, loadEntries, loadPort, saveComments, saveEntries, savePort } from './storage.js';
 import { summarize, type ReadComputed, type VerifyItem } from './verify.js';
@@ -81,7 +89,22 @@ const PANEL_CSS = `
   max-height: calc(100vh - 32px);
   overflow: auto;
 }
-.title { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+.title { margin: 0; font-size: 14px; font-weight: 600; }
+.btn-3d {
+  padding: 2px 8px;
+  border: 1px solid #d0d4da;
+  border-radius: 5px;
+  background: #f6f8fa;
+  color: #1f2328;
+  font: 12px/1.4 system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+}
+.btn-3d[aria-pressed='true'] {
+  border-color: #0969da;
+  background: #0969da;
+  color: #ffffff;
+}
 .slot:empty { display: none; }
 .send { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; row-gap: 6px; }
 .send label { display: flex; gap: 4px; align-items: center; }
@@ -113,6 +136,8 @@ interface Panel {
   refreshVerify(): void;
   /** 코멘트를 서비스 워커로 보낸다(FR-3·E-5). 실패는 상태 문구로만 알린다. */
   sendComments(ids: readonly string[]): Promise<void>;
+  /** 3D 레이어 토글 버튼 활성 상태를 동기화한다(INT-014 FR-1). */
+  setExplodedActive(active: boolean): void;
   dispose(): void;
 }
 
@@ -129,6 +154,8 @@ interface SendHandlers {
   canVerify(): boolean;
   /** 복사할 프롬프트 입력. 변경 내역이 있으면 그것, 없으면 선택 요소, 둘 다 없으면 null(FR-4). */
   promptInput(): PromptInput | null;
+  /** 3D 레이어 분해도 오버레이 토글(INT-014 FR-1). */
+  onToggleExploded(): void;
   comments: {
     /** `pending`·`failed` 코멘트를 `sending`으로 바꾸고 보낼 본문을 돌려준다(FR-3·E-5). */
     beginSend(ids: readonly string[]): ScreenCommentInput[];
@@ -175,15 +202,25 @@ function createPanel(handlers: SendHandlers): Panel {
   const host = document.createElement(HOST_TAG);
   const shadow = host.attachShadow({ mode: 'open' });
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + EDITOR_CSS + PICKER_CSS + MEASURE_CSS + COMMENTS_CSS);
+  sheet.replaceSync(PANEL_CSS + LOCATION_CSS + EDITOR_CSS + PICKER_CSS + MEASURE_CSS + COMMENTS_CSS + EXPLODED_VIEW_CSS);
   shadow.adoptedStyleSheets = [sheet];
 
   const panel = document.createElement('div');
   panel.className = 'panel';
 
+  const panelHead = document.createElement('div');
+  panelHead.className = 'panel-head';
+
   const title = document.createElement('p');
   title.className = 'title';
   title.textContent = 'DOMirror';
+
+  const explodedButton = document.createElement('button');
+  explodedButton.type = 'button';
+  explodedButton.className = 'btn-3d';
+  explodedButton.textContent = '3D 레이어';
+  explodedButton.setAttribute('aria-pressed', 'false');
+  panelHead.append(title, explodedButton);
 
   // 이후 배치가 채울 빈 자리: 위치 표시(E), 편집 필드(F), 코멘트(FR-1·FR-7), 변경 목록(F), 반영 확인(FR-5), 간격 보기(G).
   const slots = ['location', 'editor', 'comments', 'changes', 'verify', 'measure'].map((name) => {
@@ -224,7 +261,7 @@ function createPanel(handlers: SendHandlers): Panel {
   const [locationSlot, editorSlot, commentsSlot, changesSlot, verifySlot, measureSlot] = slots;
   renderLocation(locationSlot, { kind: 'idle' });
 
-  panel.append(title, ...slots, sendRow, status);
+  panel.append(panelHead, ...slots, sendRow, status);
   shadow.append(panel);
 
   let disposed = false;
@@ -376,10 +413,17 @@ function createPanel(handlers: SendHandlers): Panel {
     else setStatus('error', `코멘트 전송 실패 (포트 ${port}): ${result.error}`);
   };
 
+  const onExplodedClick = (): void => handlers.onToggleExploded();
+  const setExplodedActive = (active: boolean): void => {
+    if (disposed) return;
+    explodedButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+  };
+
   portInput.addEventListener('change', onPortChange);
   sendButton.addEventListener('click', onSendClick);
   verifyButton.addEventListener('click', onVerifyClick);
   copyButton.addEventListener('click', onCopyClick);
+  explodedButton.addEventListener('click', onExplodedClick);
 
   return {
     host,
@@ -393,12 +437,14 @@ function createPanel(handlers: SendHandlers): Panel {
     setStatus,
     refreshVerify: syncVerify,
     sendComments,
+    setExplodedActive,
     dispose() {
       disposed = true;
       portInput.removeEventListener('change', onPortChange);
       sendButton.removeEventListener('click', onSendClick);
       verifyButton.removeEventListener('click', onVerifyClick);
       copyButton.removeEventListener('click', onCopyClick);
+      explodedButton.removeEventListener('click', onExplodedClick);
       host.remove();
     },
   };
@@ -496,6 +542,10 @@ class EditSession {
         this.#setLog(log, { dirty, removed });
       })
       .catch((error: unknown) => this.#panel.setStatus('error', `변경 내역을 불러오지 못했습니다: ${errorMessage(error)}`));
+  }
+
+  selectedElement(): Element | null {
+    return this.#selected;
   }
 
   select(el: Element): void {
@@ -928,6 +978,7 @@ let panel: Panel | null = null;
 let picker: Picker | null = null;
 let session: EditSession | null = null;
 let measure: MeasureOverlay | null = null;
+let explodedView: ExplodedView | null = null;
 
 function activate(): void {
   if (panel) return;
@@ -941,6 +992,11 @@ function activate(): void {
     verifySent: (read) => current.verifySent(read),
     canVerify: () => current.canVerify(),
     promptInput: () => current.promptInput(),
+    onToggleExploded: () => {
+      if (!explodedView) return;
+      if (explodedView.isOpen()) explodedView.close();
+      else void explodedView.open();
+    },
     comments: {
       beginSend: (ids) => current.beginCommentSend(ids),
       finishSend: (ids, result) => current.finishCommentSend(ids, result),
@@ -959,10 +1015,35 @@ function activate(): void {
     onBlocked: (reason) => current.blocked(reason),
     onAltPick: (el) => currentMeasure.handleAltPick(el),
   });
+  explodedView = createExplodedView({
+    overlayRoot: currentPanel.shadow,
+    collectLayers: async () => {
+      const fiberSnapshot = await requestLayerSnapshot();
+      if (fiberSnapshot && fiberSnapshot.layers.length > 0) return fiberSnapshot;
+      return collectDomFallbackLayers(document, {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        isExcluded: (el) => el === currentPanel.host || el.tagName.toUpperCase() === HOST_TAG.toUpperCase(),
+      });
+    },
+    getSelectedElement: () => current.selectedElement(),
+    onOpenChange: (open) => {
+      currentPanel.setExplodedActive(open);
+      if (open) picker?.stop();
+      else picker?.start();
+    },
+    onPickElement: (el) => {
+      explodedView?.close();
+      current.select(el);
+    },
+    onBlockedOrMissing: (msg) => currentPanel.setStatus('info', msg),
+  });
   picker.start();
 }
 
 function deactivate(): void {
+  cancelLayerSnapshotRequest();
+  explodedView?.dispose();
+  explodedView = null;
   picker?.stop();
   picker = null;
   measure?.dispose();

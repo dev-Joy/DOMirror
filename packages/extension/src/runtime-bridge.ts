@@ -6,6 +6,7 @@ import {
   type InstanceCount,
   type RuntimeSourceRef,
 } from '@domirror/shared';
+import { isLayerSnapshot, MAX_LAYERS, type LayerSnapshot } from './layer-model.js';
 import { PROPS_SUMMARY_MAX } from './props-summary.js';
 import { isComponentRuntimeInfo, isInstanceCount, isRuntimeSourceRef } from './runtime-format.js';
 
@@ -110,6 +111,91 @@ export async function requestRuntimeInfo(el: Element, timeoutMs: number = BRIDGE
     timer = setTimeout(() => settle(null), timeoutMs);
 
     const request: BridgeRequestMessage = { channel: BRIDGE_CHANNEL, type: 'inspect', id, marker: id };
+    window.postMessage(request, '*');
+  });
+}
+
+export const BRIDGE_LAYERS_TIMEOUT_MS = 500;
+
+export interface BridgeLayersRequestMessage {
+  channel: typeof BRIDGE_CHANNEL;
+  type: 'inspect-layers';
+  id: string;
+  maxLayers: number;
+}
+
+export interface BridgeLayersResultMessage {
+  channel: typeof BRIDGE_CHANNEL;
+  type: 'inspect-layers:result';
+  id: string;
+  snapshot: LayerSnapshot | null;
+}
+
+/** 3D 레이어 스냅샷 전용 in-flight. 기존 `inflight`와 완전히 분리해 동시 호출 간섭을 막는다(NFR-4). */
+let layersInflight: { id: string; cancel: () => void } | null = null;
+
+/** 3D 레이어 스냅샷 브리지 응답 화이트리스트 검증. */
+export function isBridgeLayersResult(message: unknown, id: string): message is BridgeLayersResultMessage {
+  if (typeof message !== 'object' || message === null) return false;
+  const data = message as { channel?: unknown; type?: unknown; id?: unknown; snapshot?: unknown };
+  if (data.channel !== BRIDGE_CHANNEL || data.type !== 'inspect-layers:result' || data.id !== id) return false;
+  return data.snapshot === null || isLayerSnapshot(data.snapshot);
+}
+
+/** 진행 중인 3D 레이어 스냅샷 요청이 있으면 즉시 취소(null 정산)한다. */
+export function cancelLayerSnapshotRequest(): void {
+  const previous = layersInflight;
+  layersInflight = null;
+  previous?.cancel();
+}
+
+/**
+ * MAIN world 브리지에 React Fiber 3D 레이어 스냅샷을 요청한다(FR-2·NFR-4).
+ * 타임아웃·취소·미응답 시 `null`을 반환하며 예외를 던지지 않는다.
+ */
+export async function requestLayerSnapshot(
+  maxLayers: number = MAX_LAYERS,
+  timeoutMs: number = BRIDGE_LAYERS_TIMEOUT_MS,
+): Promise<LayerSnapshot | null> {
+  cancelLayerSnapshotRequest();
+
+  const id = nextRequestId();
+  let resolveResult: (result: LayerSnapshot | null) => void = () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let settled = false;
+
+  const onMessage = (event: MessageEvent): void => {
+    if (event.source !== window) return;
+    if (!isBridgeLayersResult(event.data, id)) return;
+    settle(event.data.snapshot);
+  };
+
+  const cleanup = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    window.removeEventListener('message', onMessage);
+    if (layersInflight?.id === id) layersInflight = null;
+  };
+
+  function settle(result: LayerSnapshot | null): void {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    resolveResult(result);
+  }
+
+  return new Promise<LayerSnapshot | null>((resolve) => {
+    resolveResult = resolve;
+    layersInflight = { id, cancel: () => settle(null) };
+
+    window.addEventListener('message', onMessage);
+    timer = setTimeout(() => settle(null), timeoutMs);
+
+    const request: BridgeLayersRequestMessage = {
+      channel: BRIDGE_CHANNEL,
+      type: 'inspect-layers',
+      id,
+      maxLayers,
+    };
     window.postMessage(request, '*');
   });
 }

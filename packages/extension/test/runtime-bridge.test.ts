@@ -1,6 +1,11 @@
 import { BRIDGE_CHANNEL } from '@domirror/shared';
 import { describe, expect, it } from 'vitest';
-import { isBridgeResult, toRuntimeBridgeResult, type BridgeResultMessage } from '../src/runtime-bridge.js';
+import {
+  isBridgeLayersResult,
+  isBridgeResult,
+  toRuntimeBridgeResult,
+  type BridgeResultMessage,
+} from '../src/runtime-bridge.js';
 
 const ID = 'dm-abc-1';
 
@@ -113,5 +118,51 @@ describe('toRuntimeBridgeResult — props·instanceCount 필드 정제 (INT-012 
 
   it('형식 위반 extras가 있어도 isBridgeResult는 통과시킨다', () => {
     expect(isBridgeResult({ ...validResult, props: 42, instanceCount: { count: 0 } }, ID)).toBe(true);
+  });
+});
+
+describe('isBridgeLayersResult (INT-014 NFR-4)', () => {
+  const layersId = 'dm-layers-1';
+  const validLayersMessage = {
+    channel: BRIDGE_CHANNEL,
+    type: 'inspect-layers:result',
+    id: layersId,
+    snapshot: {
+      mode: 'react-fiber',
+      viewport: { width: 1280, height: 720 },
+      truncated: false,
+      layers: [
+        {
+          id: 'L-0',
+          name: 'App',
+          depth: 0,
+          rect: { x: 0, y: 0, width: 1280, height: 720 },
+          domPath: [1, 0],
+          isReact: true,
+        },
+      ],
+    },
+  };
+
+  it('정상 스냅샷과 null 스냅샷 응답을 통과시킨다', () => {
+    expect(isBridgeLayersResult(validLayersMessage, layersId)).toBe(true);
+    expect(
+      isBridgeLayersResult(
+        { channel: BRIDGE_CHANNEL, type: 'inspect-layers:result', id: layersId, snapshot: null },
+        layersId,
+      ),
+    ).toBe(true);
+  });
+
+  it('채널·type·id·스냅샷 형식이 틀리면 위조 응답으로 거부한다', () => {
+    expect(isBridgeLayersResult({ ...validLayersMessage, channel: 'domirror:other' }, layersId)).toBe(false);
+    expect(isBridgeLayersResult({ ...validLayersMessage, type: 'inspect:result' }, layersId)).toBe(false);
+    expect(isBridgeLayersResult(validLayersMessage, 'dm-layers-2')).toBe(false);
+    expect(isBridgeLayersResult({ ...validLayersMessage, snapshot: { mode: 'invalid' } }, layersId)).toBe(false);
+    expect(isBridgeLayersResult(null, layersId)).toBe(false);
+  });
+
+  it('기존 isBridgeResult는 inspect-layers:result 메시지를 거부해 프로토콜을 격리한다', () => {
+    expect(isBridgeResult(validLayersMessage, layersId)).toBe(false);
   });
 });
