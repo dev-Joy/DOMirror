@@ -1,6 +1,7 @@
 import type {
   ComponentRuntimeInfo,
   InstanceCount,
+  LocationPrecision,
   PostChangesRequest,
   PostCommentsRequest,
   ScreenComment,
@@ -14,6 +15,8 @@ import * as z from 'zod/v4';
 const PositiveInt = z.number().int().positive();
 /** 코멘트의 자유 서술 보조 문자열(`selectorHint`·`pageUrl`) 상한. */
 const TEXT_MAX = 2048;
+/** 런타임 위치의 정확도(INT-011 FR-5). 변경 source에서는 미기재=빌드 플러그인 위치다(INT-013). */
+const LocationPrecisionSchema = z.enum(['exact', 'line-unverified']) satisfies z.ZodType<LocationPrecision>;
 
 /** 같은 컴포넌트 화면 렌더 수(INT-012 FR-8). capped=true면 방문 상한 도달(`N+`). */
 const InstanceCountSchema = z.object({
@@ -29,6 +32,7 @@ export const StyleChangeInputSchema = z.object({
     column: PositiveInt,
     inherited: z.boolean(),
     protected: z.boolean().optional(),
+    precision: LocationPrecisionSchema.optional(),
   }),
   selectorHint: z.string(),
   property: z.string().min(1),
@@ -65,7 +69,7 @@ const RuntimeSourceRefSchema = z.object({
   file: z.string().min(1).max(TEXT_MAX),
   line: PositiveInt.optional(),
   column: PositiveInt.optional(),
-  precision: z.enum(['exact', 'line-unverified']),
+  precision: LocationPrecisionSchema,
 });
 
 /** React DevTools hook·fiber에서 얻은 컴포넌트 정보(선택 필드, INT-011 FR-9). */

@@ -1,6 +1,6 @@
 import { formatSourceLocation, type ComponentRuntimeInfo, type InstanceCount } from '@domirror/shared';
-import { originalValue, type LocalChange } from './change-log.js';
-import { formatInstanceCount, formatRuntimeRef, ownerChainText } from './runtime-format.js';
+import { changeKey, originalValue, type LocalChange } from './change-log.js';
+import { formatInstanceCount, formatRuntimeRef, ownerChainText, precisionSuffix } from './runtime-format.js';
 import type { Located } from './source-locator.js';
 
 // 패널의 "AI 프롬프트 복사"가 클립보드에 넣을 한국어 마크다운을 만든다(FR-2~FR-7).
@@ -17,6 +17,8 @@ export interface PromptSelection {
   /** 요약·마스킹된 props(로컬 전용, INT-012 FR-7). */
   props?: string;
   instanceCount?: InstanceCount;
+  /** 라이브러리 컴포넌트 위치 대신 사용처 위치를 쓴 경우 원래 컴포넌트 이름(INT-013 FR-3). */
+  fallbackFrom?: string;
 }
 
 /** 프롬프트용 변경 항목. props는 메모리에만 있는 값이라 저장·전송되는 LocalChange와 분리한다(NFR-4·R-8). */
@@ -48,16 +50,21 @@ function inlineCode(value: string): string {
 function where(source: PromptSource | null): string {
   if (!source) return '위치 미확인';
   const path = inlineCode(formatSourceLocation(source));
-  return source.inherited ? `${path} (조상 위치)` : path;
+  // 런타임 위치면 정확도를 백틱 밖에 덧붙인다(INT-013 FR-9). 플러그인 위치는 출력 불변.
+  return `${source.inherited ? `${path} (조상 위치)` : path}${precisionSuffix(source.precision)}`;
 }
 
 /** 이름·정의 위치·호출부 위치·계층 줄(FR-10). 정확도가 낮으면 `라인 미확인`이 붙는다(FR-5). */
-function componentLines(component: ComponentRuntimeInfo | null | undefined): string[] {
+function componentLines(component: ComponentRuntimeInfo | null | undefined, fallbackFrom?: string): string[] {
   if (!component) return [];
   const parts: string[] = [];
   if (component.definition) parts.push(`정의: ${inlineCode(formatRuntimeRef(component.definition))}`);
   if (component.callSite) parts.push(`호출부: ${inlineCode(formatRuntimeRef(component.callSite))}`);
   const lines = [parts.length > 0 ? `- 컴포넌트: ${component.name} (${parts.join(' / ')})` : `- 컴포넌트: ${component.name}`];
+  // 라이브러리 위치 대신 사용처 위치를 적었음을 밝힌다(INT-013 FR-3).
+  if (fallbackFrom !== undefined) {
+    lines.push(`- 위치 폴백: 라이브러리 컴포넌트 ${inlineCode(fallbackFrom)} → 사용처 위치(가장 가까운 프로젝트 컴포넌트)`);
+  }
   const owners = ownerChainText(component.owners);
   if (owners !== null) lines.push(`- 계층: ${owners}`);
   return lines;
@@ -135,6 +142,11 @@ function changesPrompt(changes: readonly PromptChange[]): string {
   if (changes.some((c) => c.source === null)) {
     lines.push('- `위치 미확인` 항목은 `요소` 요약과 값으로 소스를 직접 찾아 주세요.');
   }
+  if (changes.some((c) => c.source?.precision !== undefined)) {
+    lines.push(
+      '- `(React 런타임 위치)`·`(라인 미확인)` 항목은 빌드 플러그인 없이 React 런타임에서 얻은 위치입니다. `(라인 미확인)`은 줄이 수십 행 어긋날 수 있으니 파일·컴포넌트 이름과 `요소`로 확인한 뒤 반영하세요.',
+    );
+  }
   const urls = new Set(changes.map((c) => c.pageUrl));
   // 모두 같은 페이지면 머리에 1번만, 다르면 항목마다 적는다(FR-7).
   const commonUrl = urls.size === 1 ? changes[0].pageUrl : null;
@@ -146,7 +158,7 @@ function changesPrompt(changes: readonly PromptChange[]): string {
       '',
       `### ${index + 1}. \`${c.property}\``,
       `- 위치: ${where(c.source)}`,
-      ...componentLines(c.component),
+      ...componentLines(c.component, c.fallbackFrom),
       ...contextLines(c.props, c.instanceCount),
       `- 요소: ${inlineCode(c.selectorHint)}`,
       `- 이전 값: ${beforeText(c)}`,
@@ -172,12 +184,34 @@ function selectionPrompt(selection: PromptSelection): string {
     '아래 요소에 대한 수정 요청을 이어서 적겠습니다. 소스에서 이 요소를 찾아 요청을 반영해 주세요.',
     '',
     `- 위치: ${location}`,
-    ...componentLines(selection.component),
+    ...componentLines(selection.component, selection.fallbackFrom),
     ...contextLines(selection.props, selection.instanceCount),
     `- 요소: ${inlineCode(hint)}`,
     `- 페이지: ${pageUrl}`,
     ...selectionFooter(selection.props !== undefined),
   ].join('\n');
+}
+
+/** 변경 내역 복사 입력(FR-12). 내역이 0건이면 null. props는 changeKey로 붙인다(메모리 전용). */
+export function changesPromptInput(
+  log: readonly LocalChange[],
+  propsByKey: ReadonlyMap<string, string>,
+): PromptInput | null {
+  if (log.length === 0) return null;
+  return {
+    kind: 'changes',
+    changes: log.map((c) => {
+      const props = propsByKey.get(changeKey(c));
+      return props === undefined ? c : { ...c, props };
+    }),
+  };
+}
+
+/** 복사 성공 상태 문구(FR-13). 위치 미확인 N건은 changes 모드에만 적는다. */
+export function copyStatusText(input: PromptInput): string {
+  if (input.kind === 'selection') return '프롬프트를 복사했습니다: 선택 요소 위치';
+  const missing = input.changes.filter((c) => c.source === null).length;
+  return `프롬프트를 복사했습니다: 변경 ${input.changes.length}건(위치 미확인 ${missing}건)`;
 }
 
 /** 한국어 마크다운 구현 프롬프트(FR-2~FR-7). 빈 내역이어도 머리만 돌려준다. */

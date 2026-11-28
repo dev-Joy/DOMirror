@@ -4,7 +4,7 @@
 
 import { locateComponent } from './source-locator.js';
 
-export type BlockedReason = 'shadow-dom' | 'iframe';
+export type BlockedReason = 'shadow-dom' | 'iframe' | 'root-element';
 
 export interface PickerOptions {
   /** 윤곽선을 그릴 위치(패널의 Shadow root). */
@@ -60,10 +60,22 @@ export function frameBlockedReason(tagName: string | null | undefined): BlockedR
   return tag === 'IFRAME' || tag === 'FRAME' ? 'iframe' : null;
 }
 
+/**
+ * 문서 루트(<html>)·<body>면 'root-element', 프레임이면 'iframe', 아니면 null(FR-10·E-9).
+ * 동일성 비교라 다른 문서의 BODY는 차단하지 않는다.
+ */
+export function elementBlockedReason(
+  target: { tagName?: string | null },
+  root: { documentElement?: unknown; body?: unknown },
+): BlockedReason | null {
+  if (target === root.documentElement || target === root.body) return 'root-element';
+  return frameBlockedReason(target.tagName);
+}
+
 function blockedReason(event: Event, target: Element): BlockedReason | null {
   // Shadow DOM 내부 노드는 문서 수준에서 호스트로 재지정되므로 실제 최초 대상과 달라진다.
   if (event.composedPath()[0] !== target) return 'shadow-dom';
-  return frameBlockedReason(target.tagName);
+  return elementBlockedReason(target, document);
 }
 
 export function createPicker(onPick: (el: Element) => void, options: PickerOptions): Picker {
@@ -108,7 +120,13 @@ export function createPicker(onPick: (el: Element) => void, options: PickerOptio
   };
 
   const onPointerMove = (event: PointerEvent): void => {
-    const target = event.target instanceof Element && !isOwn(event.target) ? event.target : null;
+    // <html>·<body>는 선택할 수 없으므로 윤곽선을 그리지 않는다(INT-013 FR-10).
+    const target =
+      event.target instanceof Element &&
+      !isOwn(event.target) &&
+      elementBlockedReason(event.target, document) !== 'root-element'
+        ? event.target
+        : null;
     if (target === hovered) return;
     hovered = target;
     draw();

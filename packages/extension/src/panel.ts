@@ -8,6 +8,7 @@ import {
   formatRuntimeRef,
   LINE_UNVERIFIED,
   ownerChainText,
+  precisionSuffix,
   runtimeSourceRefOf,
 } from './runtime-format.js';
 import type { RuntimeBridgeResult } from './runtime-bridge.js';
@@ -57,7 +58,13 @@ export const LOCATION_CSS = `
 const BLOCKED_TEXT: Record<BlockedReason, string> = {
   'shadow-dom': 'Shadow DOM 내부 요소는 선택할 수 없습니다.',
   iframe: 'iframe 내부 요소는 선택할 수 없습니다.',
+  'root-element': '<html>/<body>는 선택할 수 없습니다. 안쪽 요소를 선택하세요.',
 };
+
+/** 선택 차단 안내 문구(상태 줄용, INT-013 FR-10). */
+export function blockedMessage(reason: BlockedReason): string {
+  return BLOCKED_TEXT[reason];
+}
 
 export function line(className: string, text: string): HTMLParagraphElement {
   const p = document.createElement('p');
@@ -109,6 +116,7 @@ function runtimeLines(runtime: RuntimeBridgeResult): HTMLParagraphElement[] {
   rows.push(name);
 
   if (definitionText !== null) rows.push(line('muted', `정의: ${definitionText}`));
+  if (runtime.fallbackFrom !== undefined) rows.push(line('muted', `라이브러리 컴포넌트 ${runtime.fallbackFrom} → 사용처 위치`));
   if (info.callSite) rows.push(line('muted', `호출부: ${formatRuntimeRef(info.callSite)}`));
   const owners = ownerChainText(info.owners);
   if (owners !== null) rows.push(line('muted', `계층: ${owners}`));
@@ -321,7 +329,7 @@ export function renderChanges(
     const body = document.createElement('div');
     body.className = 'body';
     const where = c.source
-      ? `${formatSourceLocation(c.source)}${c.source.inherited ? ' (조상 위치)' : ''}`
+      ? `${formatSourceLocation(c.source)}${c.source.inherited ? ' (조상 위치)' : ''}${precisionSuffix(c.source.precision)}`
       : '소스 위치 없음 — 전송 제외';
     body.append(line(c.source ? 'path' : 'path warn', where));
     body.append(line('diff', `${c.property}: ${originalValue(c)} → ${c.after}`));

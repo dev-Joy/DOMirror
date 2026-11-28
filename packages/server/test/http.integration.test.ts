@@ -328,4 +328,43 @@ describe('domirror server (HTTP + MCP)', () => {
       await client.close();
     }
   });
+
+  it('source.precision 선택 필드: exact·line-unverified·미기재 모두 200, 그 외 값은 400 (INT-013 AC-4)', async () => {
+    const exact: StyleChangeInput = {
+      ...change,
+      id: 'chg-exact',
+      source: { file: 'src/MainMenuView.jsx', line: 42, column: 7, inherited: true, precision: 'exact' },
+    };
+    const unverified: StyleChangeInput = {
+      ...change,
+      id: 'chg-unverified',
+      source: { file: 'src/Card.tsx', line: 10, column: 25, inherited: false, precision: 'line-unverified' },
+    };
+    const legacy: StyleChangeInput = { ...change, id: 'chg-precision-legacy', property: 'border' };
+
+    const posted = await postChanges(JSON.stringify({ changes: [exact, unverified, legacy] }), { Origin: EXTENSION_ORIGIN });
+    expect(posted.status).toBe(200);
+
+    const broken = { ...change, id: 'chg-approx', source: { ...change.source, precision: 'approx' } };
+    expect((await postChanges(JSON.stringify({ changes: [broken] }), { Origin: EXTENSION_ORIGIN })).status).toBe(400);
+
+    const client = new Client({ name: 'domirror-test', version: '0.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${MCP_PATH}`)));
+    try {
+      const listed = await client.callTool({ name: 'list_pending_changes', arguments: {} });
+      expect(listed.isError).not.toBe(true);
+      const pending = (listed.structuredContent as { changes: { id: string; source: { precision?: unknown } }[] }).changes;
+      expect(pending.find((c) => c.id === 'chg-exact')?.source.precision).toBe('exact');
+      expect(pending.find((c) => c.id === 'chg-unverified')?.source.precision).toBe('line-unverified');
+      expect(pending.find((c) => c.id === 'chg-precision-legacy')?.source).not.toHaveProperty('precision');
+      expect(pending.some((c) => c.id === 'chg-approx')).toBe(false);
+
+      await client.callTool({
+        name: 'mark_changes_applied',
+        arguments: { ids: ['chg-exact', 'chg-unverified', 'chg-precision-legacy'] },
+      });
+    } finally {
+      await client.close();
+    }
+  });
 });

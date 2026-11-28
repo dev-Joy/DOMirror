@@ -1,6 +1,7 @@
 import { BRIDGE_OWNER_MAX } from '@domirror/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  ancestorSourceRef,
   componentName,
   describeRuntime,
   fiberFromNode,
@@ -171,6 +172,21 @@ describe('toSourceRef', () => {
     );
     expect(toSourceRef(frames)).toBeUndefined();
   });
+
+  it('CRA/Webpack 번들 프레임(/static/js/·.chunk.js)은 건너뛴다 (INT-013 E-3)', () => {
+    const frames = parseStackFrames(
+      stackOf(
+        'App (http://localhost:3000/static/js/bundle.js:1:1)',
+        'Card (http://localhost:3000/static/js/src_App_tsx.chunk.js:1:1)',
+      ),
+    );
+    expect(toSourceRef(frames)).toBeUndefined();
+  });
+
+  it('Vite 프로젝트의 src/static/js/ 경로는 번들로 보지 않는다 (INT-013 E-3)', () => {
+    const frames = parseStackFrames(stackOf('Foo (http://localhost:5173/src/static/js/foo.js:3:1)'));
+    expect(toSourceRef(frames)).toEqual({ file: 'src/static/js/foo.js', line: 3, column: 1, precision: 'line-unverified' });
+  });
 });
 
 describe('ownerChain', () => {
@@ -307,5 +323,123 @@ describe('describeRuntime', () => {
 
   it('fiber가 없으면 info만 null이다', () => {
     expect(describeRuntime(null)).toEqual({ info: null });
+  });
+});
+
+describe('describeRuntime — 라이브러리 상위 폴백 (INT-013)', () => {
+  const MAIN_MENU = { file: '/w/src/MainMenuView.jsx', line: 42, column: 7, precision: 'exact' };
+
+  /** React 18 + MUI: 호스트·MuiTypographyRoot는 node_modules 위치, Typography 사용처는 프로젝트 위치. */
+  function muiTree() {
+    const root = makeFiber({ tag: 3 });
+    const mainMenu = makeFiber({ tag: 0, type: function MainMenuView() {}, return: root });
+    const typography = withDebugSource(
+      makeFiber({ tag: 0, type: function Typography() {}, return: mainMenu, _debugOwner: mainMenu }),
+      { fileName: '/w/src/MainMenuView.jsx', lineNumber: 42, columnNumber: 7 },
+    );
+    const muiRoot = makeFiber({ tag: 11, type: { displayName: 'MuiTypographyRoot' }, return: typography, _debugOwner: typography });
+    const host = withDebugSource(
+      makeFiber({ tag: 5, type: 'span', return: muiRoot, _debugOwner: muiRoot }),
+      { fileName: '/w/node_modules/@mui/material/Typography/Typography.js', lineNumber: 10, columnNumber: 3 },
+    );
+    return { root, mainMenu, typography, muiRoot, host };
+  }
+
+  it('호스트 위치가 node_modules면 상위 프로젝트 위치를 쓰고 fallbackFrom을 남긴다 (AC-1 FR-1·FR-3)', () => {
+    const { host } = muiTree();
+    const described = describeRuntime(host);
+
+    expect(described.hostSource).toEqual(MAIN_MENU);
+    expect(described.info?.definition).toEqual(MAIN_MENU);
+    expect(described.info?.callSite).toEqual(MAIN_MENU);
+    expect(described.info?.name).toBe('MuiTypographyRoot');
+    expect(described.fallbackFrom).toBe('MuiTypographyRoot');
+  });
+
+  it('체인 전체가 node_modules면 위치·fallbackFrom이 없다 (AC-1 E-1)', () => {
+    const { host, typography } = muiTree();
+    withDebugSource(typography, { fileName: '/w/node_modules/@mui/material/Typography/Typography.js', lineNumber: 1, columnNumber: 1 });
+
+    expect(describeRuntime(host)).toEqual({
+      info: { name: 'MuiTypographyRoot', via: 'fiber', owners: ['MuiTypographyRoot', 'Typography', 'MainMenuView'] },
+    });
+  });
+
+  it('_debugOwner 순환이 있어도 종료하고 위치 없음이다 (AC-1 E-2)', () => {
+    const root = makeFiber({ tag: 3 });
+    const muiRoot = makeFiber({ tag: 11, type: { displayName: 'MuiTypographyRoot' }, return: root });
+    const host = makeFiber({ tag: 5, type: 'span', return: muiRoot, _debugOwner: muiRoot });
+    muiRoot._debugOwner = host;
+
+    const described = describeRuntime(host);
+    expect(described.hostSource).toBeUndefined();
+    expect(described.fallbackFrom).toBeUndefined();
+    expect(described.info?.definition).toBeUndefined();
+    expect(ancestorSourceRef(host)).toBeUndefined();
+  });
+
+  it('방문 상한(BRIDGE_OWNER_MAX)을 넘는 상위 위치는 찾지 않는다 (AC-1 E-2)', () => {
+    function chain(empty: number): FiberLike {
+      const root = makeFiber({ tag: 3 });
+      let current: FiberLike = withDebugSource(makeFiber({ tag: 0, type: function Project() {}, return: root }), {
+        fileName: '/w/src/Project.tsx',
+        lineNumber: 3,
+        columnNumber: 4,
+      });
+      for (let index = 0; index < empty; index += 1) {
+        current = makeFiber({ tag: 0, type: function Lib() {}, return: current });
+      }
+      return makeFiber({ tag: 5, type: 'div', return: current });
+    }
+
+    expect(ancestorSourceRef(chain(BRIDGE_OWNER_MAX))).toBeUndefined();
+    expect(ancestorSourceRef(chain(BRIDGE_OWNER_MAX - 1))).toEqual({
+      file: '/w/src/Project.tsx',
+      line: 3,
+      column: 4,
+      precision: 'exact',
+    });
+  });
+
+  it('React 19 + Vite: 호스트 스택이 node_modules뿐이면 owner 스택 위치(line-unverified)로 폴백한다 (AC-1)', () => {
+    const root = makeFiber({ tag: 3 });
+    const owner = makeFiber({
+      tag: 0,
+      type: function MainMenuView() {},
+      return: root,
+      _debugStack: stackOf('MainMenuView (http://localhost:5173/src/MainMenuView.tsx:30:9)'),
+    });
+    const muiRoot = makeFiber({
+      tag: 11,
+      type: { displayName: 'MuiTypographyRoot' },
+      return: owner,
+      _debugOwner: owner,
+      _debugStack: stackOf('Typography (http://localhost:5173/node_modules/.vite/deps/@mui_material.js?v=1:100:1)'),
+    });
+    const host = makeFiber({
+      tag: 5,
+      type: 'span',
+      return: muiRoot,
+      _debugOwner: muiRoot,
+      _debugStack: stackOf('Typography (http://localhost:5173/node_modules/.vite/deps/@mui_material.js?v=1:200:1)'),
+    });
+
+    const described = describeRuntime(host);
+    const expected = { file: 'src/MainMenuView.tsx', line: 30, column: 9, precision: 'line-unverified' };
+    expect(described.hostSource).toEqual(expected);
+    expect(described.info?.definition).toEqual(expected);
+    expect(described.info?.callSite).toEqual(expected);
+    expect(described.fallbackFrom).toBe('MuiTypographyRoot');
+  });
+
+  it('호스트 자체 위치가 있으면 fallbackFrom이 없다 (AC-1)', () => {
+    const { host } = muiTree();
+    withDebugSource(host, { fileName: '/w/src/Own.tsx', lineNumber: 5, columnNumber: 2 });
+
+    const described = describeRuntime(host);
+    expect(described.hostSource).toEqual({ file: '/w/src/Own.tsx', line: 5, column: 2, precision: 'exact' });
+    expect('fallbackFrom' in described).toBe(false);
+    // 폴백이 아니면 callSite는 nearest 자신의 위치만 본다(MuiTypographyRoot는 위치 없음).
+    expect(described.info?.callSite).toBeUndefined();
   });
 });

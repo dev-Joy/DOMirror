@@ -121,6 +121,27 @@ describe('toRuntimeBridgeResult — props·instanceCount 필드 정제 (INT-012 
   });
 });
 
+describe('toRuntimeBridgeResult — fallbackFrom 필드 정제 (INT-013 AC-2)', () => {
+  function pick(message: unknown) {
+    expect(isBridgeResult(message, ID)).toBe(true);
+    return toRuntimeBridgeResult(message as BridgeResultMessage);
+  }
+
+  it('문자열 fallbackFrom을 보존한다', () => {
+    expect(pick({ ...validResult, fallbackFrom: 'MuiTypographyRoot' }).fallbackFrom).toBe('MuiTypographyRoot');
+    expect(pick({ ...validResult, fallbackFrom: 'x'.repeat(200) }).fallbackFrom).toHaveLength(200);
+  });
+
+  it('형식이 틀린 fallbackFrom은 그 필드만 버리고 isBridgeResult는 통과시킨다', () => {
+    for (const fallbackFrom of [42, '', '   ', 'x'.repeat(201)]) {
+      const result = pick({ ...validResult, fallbackFrom });
+      expect(result).not.toHaveProperty('fallbackFrom');
+      expect(result.info).toEqual(validResult.info);
+      expect(result.hostSource).toEqual(validResult.hostSource);
+    }
+  });
+});
+
 describe('isBridgeLayersResult (INT-014 NFR-4)', () => {
   const layersId = 'dm-layers-1';
   const validLayersMessage = {

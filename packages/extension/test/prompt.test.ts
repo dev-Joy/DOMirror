@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { LocalChange } from '../src/change-log.js';
-import { buildPrompt, type PromptChange, type PromptInput, type PromptSelection } from '../src/prompt.js';
+import { changeKey, type LocalChange } from '../src/change-log.js';
+import {
+  buildPrompt,
+  changesPromptInput,
+  copyStatusText,
+  type PromptChange,
+  type PromptInput,
+  type PromptSelection,
+} from '../src/prompt.js';
 
 const SOURCE = { file: 'src/App.tsx', line: 12, column: 5, inherited: false };
 const PAGE = 'http://127.0.0.1:5173/';
@@ -395,5 +402,96 @@ describe('buildPrompt — props·인스턴스 줄과 props 자가 점검 (INT-01
     expect(changesText.slice(changesText.indexOf('\n\n## 자가 점검'))).toBe(
       GOLDEN_CHANGES.slice(GOLDEN_CHANGES.indexOf('\n\n## 자가 점검')),
     );
+  });
+});
+
+describe('buildPrompt — 라이브러리 위치 폴백 줄 (INT-013 AC-2)', () => {
+  const COMPONENT = {
+    name: 'MuiTypographyRoot',
+    definition: { file: 'src/MainMenuView.jsx', line: 42, column: 7, precision: 'exact' as const },
+    owners: ['MuiTypographyRoot', 'Typography', 'MainMenuView'],
+    via: 'fiber' as const,
+  };
+  const FALLBACK_LINE = '- 위치 폴백: 라이브러리 컴포넌트 `MuiTypographyRoot` → 사용처 위치(가장 가까운 프로젝트 컴포넌트)';
+
+  it('선택 모드: 컴포넌트 줄 뒤·계층 줄 앞에 1번 넣는다', () => {
+    const text = buildPrompt({
+      kind: 'selection',
+      selection: { hint: 'span.MuiTypography-root', located: null, pageUrl: PAGE, component: COMPONENT, fallbackFrom: 'MuiTypographyRoot' },
+    });
+    expect(count(text, FALLBACK_LINE)).toBe(1);
+    expect(text).toContain(`)\n${FALLBACK_LINE}\n- 계층: `);
+  });
+
+  it('내역 모드: fallbackFrom이 있는 항목에만 1번 넣는다', () => {
+    const text = buildPrompt(
+      changes(change({ component: COMPONENT, fallbackFrom: 'MuiTypographyRoot' }), change({ id: 'id-2', property: 'color', component: COMPONENT })),
+    );
+    expect(count(text, FALLBACK_LINE)).toBe(1);
+    expect(text.indexOf(FALLBACK_LINE)).toBeLessThan(text.indexOf('- 계층: '));
+  });
+
+  it('fallbackFrom이 없으면 기존 출력과 같다', () => {
+    const selection: PromptSelection = { hint: 'span', located: null, pageUrl: PAGE, component: COMPONENT };
+    const text = buildPrompt({ kind: 'selection', selection });
+    expect(text).not.toContain('위치 폴백');
+    expect(buildPrompt(changes(change({ component: COMPONENT })))).not.toContain('위치 폴백');
+  });
+});
+
+describe('buildPrompt — 런타임 위치 정확도 표기 (INT-013 AC-5)', () => {
+  const unverified = change({
+    source: { file: 'src/X.tsx', line: 1, column: 1, inherited: false, precision: 'line-unverified' },
+  });
+  const exact = change({
+    id: 'id-2',
+    property: 'color',
+    source: { file: 'src/Y.tsx', line: 5, column: 3, inherited: false, precision: 'exact' },
+  });
+  const NOTE = '- `(React 런타임 위치)`·`(라인 미확인)` 항목은 빌드 플러그인 없이 React 런타임에서 얻은 위치입니다.';
+
+  it('line-unverified·exact 위치에 정확도를 백틱 밖에 덧붙인다', () => {
+    const text = buildPrompt(changes(unverified, exact));
+    expect(text).toContain('- 위치: `src/X.tsx:1:1` (라인 미확인)');
+    expect(text).toContain('- 위치: `src/Y.tsx:5:3` (React 런타임 위치)');
+  });
+
+  it('조상 표기 뒤에 정확도를 붙인다', () => {
+    const inherited = change({ source: { file: 'src/X.tsx', line: 2, column: 1, inherited: true, precision: 'exact' } });
+    expect(buildPrompt(changes(inherited))).toContain('- 위치: `src/X.tsx:2:1` (조상 위치) (React 런타임 위치)');
+  });
+
+  it('precision이 있는 항목이 있을 때만 안내 줄을 1번 넣는다', () => {
+    expect(count(buildPrompt(changes(unverified, exact)), NOTE)).toBe(1);
+    const plain = buildPrompt(changes(change(), change({ id: 'id-2', source: null })));
+    expect(plain).not.toContain(NOTE);
+    expect(plain).not.toContain('React 런타임 위치');
+  });
+});
+
+describe('changesPromptInput·copyStatusText — 복사 버튼 2개 (INT-013 Step 7)', () => {
+  it('내역이 0건이면 null', () => {
+    expect(changesPromptInput([], new Map())).toBeNull();
+  });
+
+  it('props를 changeKey로 붙이고 없는 항목은 그대로 둔다', () => {
+    const first = change();
+    const second = change({ id: 'id-2', property: 'color' });
+    const input = changesPromptInput([first, second], new Map([[changeKey(first), '{ variant: "h1" }']]));
+    expect(input?.kind).toBe('changes');
+    const list = input?.kind === 'changes' ? input.changes : [];
+    expect(list[0]).toEqual({ ...first, props: '{ variant: "h1" }' });
+    expect(list[1]).toBe(second);
+  });
+
+  it('선택 모드 문구에는 위치 미확인 건수가 없다', () => {
+    const text = copyStatusText({ kind: 'selection', selection: { hint: 'div', located: null, pageUrl: PAGE } });
+    expect(text).toBe('프롬프트를 복사했습니다: 선택 요소 위치');
+    expect(text).not.toContain('위치 미확인');
+  });
+
+  it('내역 모드 문구는 전체·위치 미확인 건수를 정확히 적는다', () => {
+    const input = changesPromptInput([change(), change({ id: 'id-2', source: null, selectorHint: 'em' })], new Map());
+    expect(input && copyStatusText(input)).toBe('프롬프트를 복사했습니다: 변경 2건(위치 미확인 1건)');
   });
 });

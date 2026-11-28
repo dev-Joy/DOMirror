@@ -18,7 +18,12 @@ export interface RuntimeBridgeResult {
   props?: string;
   /** 같은 컴포넌트 화면 렌더 수(FR-5). */
   instanceCount?: InstanceCount;
+  /** 라이브러리 컴포넌트 위치 대신 상위 위치를 쓸 때 원래 컴포넌트 이름(INT-013 FR-3). 로컬 전용. */
+  fallbackFrom?: string;
 }
+
+/** `fallbackFrom` 최대 길이. 넘으면 그 필드만 버린다. */
+const FALLBACK_NAME_MAX = 200;
 
 export type RuntimeExtras = Pick<RuntimeBridgeResult, 'props' | 'instanceCount'>;
 
@@ -59,6 +64,10 @@ export function toRuntimeBridgeResult(message: BridgeResultMessage): RuntimeBrid
   if (typeof props === 'string' && props.length > 0 && props.length <= PROPS_SUMMARY_MAX) result.props = props;
   const instanceCount: unknown = message.instanceCount;
   if (isInstanceCount(instanceCount)) result.instanceCount = { count: instanceCount.count, capped: instanceCount.capped };
+  const fallbackFrom: unknown = message.fallbackFrom;
+  if (typeof fallbackFrom === 'string' && fallbackFrom.trim() !== '' && fallbackFrom.length <= FALLBACK_NAME_MAX) {
+    result.fallbackFrom = fallbackFrom;
+  }
   return result;
 }
 

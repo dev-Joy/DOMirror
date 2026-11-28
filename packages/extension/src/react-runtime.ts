@@ -28,6 +28,8 @@ export interface RuntimeDescription {
   info: ComponentRuntimeInfo | null;
   /** 선택 요소(호스트 태그)가 쓰인 위치. 코멘트 `source` 채움에도 쓴다(E-6·Q2). */
   hostSource?: RuntimeSourceRef;
+  /** 호스트 위치를 못 얻어 owner/return 상위에서 위치를 얻었을 때, 원래 컴포넌트 이름(INT-013 FR-3). 익스텐션 내부 전용. */
+  fallbackFrom?: string;
 }
 
 /** Fiber tag 상수(react-reconciler). 0 함수, 1 클래스, 3 HostRoot, 11 forwardRef, 14 memo, 15 simpleMemo. */
@@ -51,6 +53,8 @@ const SOURCE_EXTENSION = /\.(?:tsx|ts|jsx|js)$/;
 const V8_FRAME = /^\s*at\s+(?:.*?\()?(.+?):(\d+):(\d+)\)?\s*$/;
 /** 프로젝트 소스가 아닌 프레임. 첫 프로젝트 프레임을 고를 때 건너뛴다. */
 const NOISE_FRAME = /node_modules|@react-refresh|\.vite\/deps|react-dom|react-jsx/;
+/** CRA/Webpack dev 번들 프레임(원점 바로 아래 `/static/js/`·`.chunk.js`). 소스맵 없이는 프로젝트 위치가 아니므로 건너뛴다(E-3). */
+const WEBPACK_BUNDLE_FRAME = /^[a-z][\w+.-]*:\/\/[^/]+\/static\/js\/|\.chunk\.js(?:[?#]|$)/i;
 
 /**
  * 호스트 DOM 노드의 own key 중 `__reactFiber$` 접두 키에서 fiber를 읽는다(FR-2).
@@ -170,7 +174,7 @@ export function normalizeFile(url: string): string | null {
 /** 프로젝트 프레임 중 첫 번째를 위치로 쓴다. 소스맵 보정을 하지 않으므로 라인은 `line-unverified`다(Q1 (a)). */
 export function toSourceRef(frames: StackFrame[]): RuntimeSourceRef | undefined {
   for (const frame of frames) {
-    if (NOISE_FRAME.test(frame.url)) continue;
+    if (NOISE_FRAME.test(frame.url) || WEBPACK_BUNDLE_FRAME.test(frame.url)) continue;
     const file = normalizeFile(frame.url);
     if (!file) continue;
     return { file, line: frame.line, column: frame.column, precision: 'line-unverified' };
@@ -233,6 +237,32 @@ function sourceRefFrom(fiber: FiberLike | null): RuntimeSourceRef | undefined {
 }
 
 /**
+ * `_debugOwner ?? return` 순으로 올라가며 처음 얻은 프로젝트 위치(FR-1·FR-2·E-1·E-2). 시작 fiber 자신은 보지 않는다.
+ * HostRoot에서 중단, 방문 상한 max(기본 BRIDGE_OWNER_MAX), seen으로 순환 방지.
+ */
+export function ancestorSourceRef(
+  fiber: FiberLike | null,
+  max: number = BRIDGE_OWNER_MAX,
+): RuntimeSourceRef | undefined {
+  const limit = Number.isInteger(max) && max > 0 ? max : BRIDGE_OWNER_MAX;
+  const seen = new Set<FiberLike>();
+  if (fiber) seen.add(fiber);
+
+  let visited = 0;
+  let current = fiber?._debugOwner ?? fiber?.return ?? null;
+  // `_debugOwner`는 페이지가 변조할 수 있으므로 순환·무한 상향을 막는다(E-2).
+  while (current && visited < limit && !seen.has(current)) {
+    seen.add(current);
+    visited++;
+    if (current.tag === HOST_ROOT) break;
+    const ref = sourceRefFrom(current);
+    if (ref) return ref;
+    current = current._debugOwner ?? current.return ?? null;
+  }
+  return undefined;
+}
+
+/**
  * 선택 요소의 fiber에서 컴포넌트 정보를 만든다(FR-3~FR-5).
  * - `definition`·`hostSource`: 호스트 fiber의 위치(컴포넌트 파일 안에서 호스트 태그를 쓴 곳)
  * - `callSite`: 가장 가까운 composite fiber의 위치(그 컴포넌트를 쓴 JSX)
@@ -242,18 +272,25 @@ export function describeRuntime(
   fiber: FiberLike | null,
   via: ComponentRuntimeInfo['via'] = 'fiber',
 ): RuntimeDescription {
-  const hostSource = sourceRefFrom(fiber);
+  const own = sourceRefFrom(fiber);
   const nearest = nearestComponent(fiber);
-  if (!nearest) return hostSource ? { info: null, hostSource } : { info: null };
+  if (!nearest) return own ? { info: null, hostSource: own } : { info: null };
+
+  // 호스트 위치가 라이브러리(node_modules) 안이면 상위 프로젝트 컴포넌트 위치로 대신한다(INT-013 FR-1).
+  const fallback = own ? undefined : ancestorSourceRef(fiber);
+  const hostSource = own ?? fallback;
 
   const info: ComponentRuntimeInfo = { name: componentName(nearest), via };
   if (hostSource) info.definition = hostSource;
 
-  const callSite = sourceRefFrom(nearest);
+  // 호스트 폴백일 때만 상위를 탐색한다(그 외에는 nearest 자신의 위치만 쓴다).
+  const callSite = sourceRefFrom(nearest) ?? (fallback ? ancestorSourceRef(nearest) : undefined);
   if (callSite) info.callSite = callSite;
 
   const owners = ownerChain(fiber);
   if (owners.length > 0) info.owners = owners;
 
-  return hostSource ? { info, hostSource } : { info };
+  const description: RuntimeDescription = hostSource ? { info, hostSource } : { info };
+  if (fallback) description.fallbackFrom = componentName(nearest);
+  return description;
 }

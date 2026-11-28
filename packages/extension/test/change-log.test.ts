@@ -168,6 +168,18 @@ describe('sendable', () => {
     expect(out[0]).not.toHaveProperty('component');
   });
 
+  it('source.precision은 전송에 남기고 fallbackFrom(로컬 전용)은 뺀다 (INT-013 AC-3)', () => {
+    const runtimeSource = { file: 'src/Card.tsx', line: 10, column: 25, inherited: true, precision: 'line-unverified' as const };
+    const log = [
+      change({ source: runtimeSource, fallbackFrom: 'MuiTypographyRoot' }),
+      change({ id: 'id-2', source: null, fallbackFrom: 'MuiTypographyRoot' }),
+    ];
+    const out = sendable(log);
+    expect(out.map((c) => c.id)).toEqual(['id-1']);
+    expect(out[0].source).toEqual(runtimeSource);
+    expect(out[0]).not.toHaveProperty('fallbackFrom');
+  });
+
   it('instanceCount는 전송 계약에 남기고 props 관련 필드는 없다 (INT-012 FR-8·AC-7)', () => {
     const log = [change({ instanceCount: { count: 4, capped: false } }), change({ id: 'id-2', property: 'color' })];
     const out = sendable(log);

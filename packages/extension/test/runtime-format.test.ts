@@ -6,6 +6,8 @@ import {
   isInstanceCount,
   isRuntimeSourceRef,
   ownerChainText,
+  precisionSuffix,
+  runtimeChangeSource,
   runtimeSourceLocation,
   runtimeSourceRefOf,
 } from '../src/runtime-format.js';
@@ -100,5 +102,49 @@ describe('인스턴스 수 표시·검증 (INT-012 FR-6)', () => {
     expect(isInstanceCount({ count: 3, capped: 'yes' })).toBe(false);
     expect(isInstanceCount(null)).toBe(false);
     expect(isInstanceCount(3)).toBe(false);
+  });
+});
+
+describe('runtimeChangeSource — CSS 변경 source 채움 (INT-013 AC-3)', () => {
+  const info = { name: 'Card', via: 'fiber' as const };
+
+  it('폴백이 아닌 exact 위치는 inherited:false·precision:exact', () => {
+    const source = runtimeChangeSource({ info, hostSource: { file: 'src/Card.tsx', line: 12, column: 5, precision: 'exact' } });
+    expect(source).toEqual({ file: 'src/Card.tsx', line: 12, column: 5, inherited: false, precision: 'exact' });
+    expect(source).not.toHaveProperty('protected');
+  });
+
+  it('fallbackFrom이 있으면 조상 위치(inherited:true)다', () => {
+    expect(
+      runtimeChangeSource({
+        info,
+        hostSource: { file: 'src/MainMenuView.jsx', line: 42, column: 7, precision: 'exact' },
+        fallbackFrom: 'MuiTypographyRoot',
+      }),
+    ).toEqual({ file: 'src/MainMenuView.jsx', line: 42, column: 7, inherited: true, precision: 'exact' });
+  });
+
+  it('라인이 없으면 1:1로 채우고 line-unverified를 남긴다', () => {
+    expect(runtimeChangeSource({ info, hostSource: { file: 'src/Card.tsx', precision: 'line-unverified' } })).toEqual({
+      file: 'src/Card.tsx',
+      line: 1,
+      column: 1,
+      inherited: false,
+      precision: 'line-unverified',
+    });
+  });
+
+  it('info가 없거나 런타임 결과가 없으면 null', () => {
+    expect(runtimeChangeSource({ info: null, hostSource: { file: 'src/Card.tsx', precision: 'exact' } })).toBeNull();
+    expect(runtimeChangeSource(null)).toBeNull();
+    expect(runtimeChangeSource(undefined)).toBeNull();
+  });
+});
+
+describe('precisionSuffix (INT-013 FR-9)', () => {
+  it('미기재는 빈 문자열, line-unverified는 라인 미확인, exact는 React 런타임 위치', () => {
+    expect(precisionSuffix(undefined)).toBe('');
+    expect(precisionSuffix('line-unverified')).toBe(' (라인 미확인)');
+    expect(precisionSuffix('exact')).toBe(' (React 런타임 위치)');
   });
 });

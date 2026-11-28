@@ -34,6 +34,7 @@ import { EditTracker } from './edit-tracker.js';
 import { createExplodedView, EXPLODED_VIEW_CSS, type ExplodedView } from './exploded-view.js';
 import { collectDomFallbackLayers } from './layer-collect.js';
 import {
+  blockedMessage,
   createSelectionHighlight,
   EDITOR_CSS,
   LOCATION_CSS,
@@ -45,10 +46,10 @@ import {
 } from './panel.js';
 import { createMeasureOverlay, MEASURE_CSS, type MeasureOverlay } from './overlay.js';
 import { createPicker, PICKER_CSS, type BlockedReason, type Picker } from './picker.js';
-import { buildPrompt, type PromptInput } from './prompt.js';
+import { buildPrompt, changesPromptInput, copyStatusText, type PromptInput } from './prompt.js';
 import { EDITABLE_PROPERTIES } from './properties.js';
 import { isValidPort } from './relay.js';
-import { LINE_UNVERIFIED, runtimeSourceLocation, runtimeSourceRefOf } from './runtime-format.js';
+import { LINE_UNVERIFIED, runtimeChangeSource, runtimeSourceLocation, runtimeSourceRefOf } from './runtime-format.js';
 import {
   cancelLayerSnapshotRequest,
   requestLayerSnapshot,
@@ -111,6 +112,7 @@ const PANEL_CSS = `
 .send input { width: 72px; font: inherit; }
 .send button { font: inherit; cursor: pointer; }
 .send button:disabled { cursor: progress; }
+.send button[data-copy]:disabled { cursor: not-allowed; }
 .status { min-height: 1.4em; margin: 8px 0 0; word-break: break-word; }
 .status[data-kind='error'] { color: #cf222e; }
 .status[data-kind='ok'] { color: #1a7f37; }
@@ -134,6 +136,8 @@ interface Panel {
   setStatus(kind: StatusKind, text: string): void;
   /** 반영 확인 버튼의 활성 상태를 현재 조건으로 맞춘다(FR-2). */
   refreshVerify(): void;
+  /** 복사 버튼 2개의 활성 상태를 복사 대상 유무로 맞춘다(INT-013 FR-12). */
+  refreshCopy(): void;
   /** 코멘트를 서비스 워커로 보낸다(FR-3·E-5). 실패는 상태 문구로만 알린다. */
   sendComments(ids: readonly string[]): Promise<void>;
   /** 3D 레이어 토글 버튼 활성 상태를 동기화한다(INT-014 FR-1). */
@@ -152,8 +156,12 @@ interface SendHandlers {
   verifySent(read: ReadComputed): VerifyItem[] | null;
   /** 반영 확인 버튼 활성 조건: 전송 기록 1건 이상 && 전송 중 아님(FR-2). */
   canVerify(): boolean;
-  /** 복사할 프롬프트 입력. 변경 내역이 있으면 그것, 없으면 선택 요소, 둘 다 없으면 null(FR-4). */
-  promptInput(): PromptInput | null;
+  /** 선택 요소 복사 입력. 선택이 없으면 null(INT-013 FR-12). */
+  selectionPromptInput(): PromptInput | null;
+  /** 변경 내역 복사 입력. 내역이 없으면 null(INT-013 FR-12). */
+  changesPromptInput(): PromptInput | null;
+  /** 복사 버튼 활성 조건: 선택 요소 있음 / 변경 내역 1건 이상(INT-013 FR-12). */
+  copyState(): { selection: boolean; changes: boolean };
   /** 3D 레이어 분해도 오버레이 토글(INT-014 FR-1). */
   onToggleExploded(): void;
   comments: {
@@ -248,11 +256,18 @@ function createPanel(handlers: SendHandlers): Panel {
   verifyButton.type = 'button';
   verifyButton.textContent = '반영 확인';
   verifyButton.disabled = true;
-  // 복사는 내역을 바꾸지 않으므로 전송 중에도 누를 수 있게 유휴(disabled) 상태로 만들지 않는다(FR-1).
-  const copyButton = document.createElement('button');
-  copyButton.type = 'button';
-  copyButton.textContent = 'AI 프롬프트 복사';
-  sendRow.append(portLabel, sendButton, verifyButton, copyButton);
+  // 복사는 내역을 바꾸지 않으므로 전송 중에도 잠그지 않고, 복사 대상 유무로만 활성화한다(FR-1·INT-013 FR-12).
+  const copySelectionButton = document.createElement('button');
+  copySelectionButton.type = 'button';
+  copySelectionButton.textContent = '선택 요소 복사';
+  copySelectionButton.dataset.copy = 'selection';
+  copySelectionButton.disabled = true;
+  const copyChangesButton = document.createElement('button');
+  copyChangesButton.type = 'button';
+  copyChangesButton.textContent = '변경 내역 복사';
+  copyChangesButton.dataset.copy = 'changes';
+  copyChangesButton.disabled = true;
+  sendRow.append(portLabel, sendButton, verifyButton, copySelectionButton, copyChangesButton);
 
   const status = document.createElement('p');
   status.className = 'status';
@@ -278,6 +293,12 @@ function createPanel(handlers: SendHandlers): Panel {
   // 반영 확인 버튼의 활성 조건은 세션(전송 기록·전송 중 잠금)이 판단한다(FR-2).
   const syncVerify = (): void => {
     verifyButton.disabled = !handlers.canVerify();
+  };
+  // 복사 버튼은 선택 요소·변경 내역 유무로만 활성화한다(INT-013 FR-12).
+  const syncCopy = (): void => {
+    const state = handlers.copyState();
+    copySelectionButton.disabled = !state.selection;
+    copyChangesButton.disabled = !state.changes;
   };
   // 해제 후 비교할 computed. 트래커는 인라인 style 인터페이스만 알므로 여기서 Element로 좁힌다.
   const readComputed: ReadComputed = (el, property) =>
@@ -362,27 +383,30 @@ function createPanel(handlers: SendHandlers): Panel {
   const onVerifyClick = (): void => onVerify();
 
   // AI 프롬프트 복사(FR-1·FR-4·FR-8). 읽기 전용이라 내역·저장소·전송 상태를 바꾸지 않는다(FR-9).
-  const onCopy = async (): Promise<void> => {
-    const input = handlers.promptInput();
+  // 선택 요소·변경 내역을 버튼별로 따로 복사한다(INT-013 FR-12·FR-13).
+  const onCopy = async (kind: 'selection' | 'changes'): Promise<void> => {
+    const input = kind === 'selection' ? handlers.selectionPromptInput() : handlers.changesPromptInput();
     if (!input) {
-      setStatus('info', '복사할 내용이 없습니다 — 요소를 선택하거나 값을 편집하세요');
+      setStatus(
+        'info',
+        kind === 'selection'
+          ? '복사할 선택 요소가 없습니다 — 페이지에서 요소를 선택하세요'
+          : '복사할 변경 내역이 없습니다 — 값을 편집하세요',
+      );
+      syncCopy();
       return;
     }
     // 버튼을 누른 시점의 스냅샷으로 만든다(E-5).
     const text = buildPrompt(input);
     try {
       await copyText(text, shadow);
-      if (input.kind === 'changes') {
-        const missing = input.changes.filter((c) => c.source === null).length;
-        setStatus('ok', `프롬프트를 복사했습니다: 변경 ${input.changes.length}건(위치 미확인 ${missing}건)`);
-      } else {
-        setStatus('ok', '프롬프트를 복사했습니다: 선택 요소 위치');
-      }
+      setStatus('ok', copyStatusText(input));
     } catch (error) {
       setStatus('error', `복사 실패: ${errorMessage(error)}`);
     }
   };
-  const onCopyClick = (): void => void onCopy();
+  const onCopySelectionClick = (): void => void onCopy('selection');
+  const onCopyChangesClick = (): void => void onCopy('changes');
 
   // 코멘트 전송(FR-3). 코멘트 상태·목록은 EditSession이 갖고, 여기서는 포트·메시지·상태 문구만 맡는다(E-5).
   const sendComments = async (ids: readonly string[]): Promise<void> => {
@@ -422,7 +446,8 @@ function createPanel(handlers: SendHandlers): Panel {
   portInput.addEventListener('change', onPortChange);
   sendButton.addEventListener('click', onSendClick);
   verifyButton.addEventListener('click', onVerifyClick);
-  copyButton.addEventListener('click', onCopyClick);
+  copySelectionButton.addEventListener('click', onCopySelectionClick);
+  copyChangesButton.addEventListener('click', onCopyChangesClick);
   explodedButton.addEventListener('click', onExplodedClick);
 
   return {
@@ -436,6 +461,7 @@ function createPanel(handlers: SendHandlers): Panel {
     measureSlot,
     setStatus,
     refreshVerify: syncVerify,
+    refreshCopy: syncCopy,
     sendComments,
     setExplodedActive,
     dispose() {
@@ -443,7 +469,8 @@ function createPanel(handlers: SendHandlers): Panel {
       portInput.removeEventListener('change', onPortChange);
       sendButton.removeEventListener('click', onSendClick);
       verifyButton.removeEventListener('click', onVerifyClick);
-      copyButton.removeEventListener('click', onCopyClick);
+      copySelectionButton.removeEventListener('click', onCopySelectionClick);
+      copyChangesButton.removeEventListener('click', onCopyChangesClick);
       explodedButton.removeEventListener('click', onExplodedClick);
       host.remove();
     },
@@ -555,17 +582,24 @@ class EditSession {
     this.#renderSelection();
     this.#renderEditor();
     this.#renderCommentForm();
+    this.#panel.refreshCopy();
     // 플러그인 위치 유무와 관계없이 브리지에 1회 묻는다(INT-012 FR-1·D-03). 플러그인 위치가 있으면 props·instanceCount만 쓴다.
     void this.#loadRuntime(el, this.#runtimeSeq);
   }
 
   blocked(reason: BlockedReason): void {
+    // <html>/<body> 클릭은 기존 선택을 유지하고 안내만 한다(INT-013 E-8).
+    if (reason === 'root-element' && this.#selected) {
+      this.#panel.setStatus('info', blockedMessage(reason));
+      return;
+    }
     this.#selected = null;
     this.#highlight.set(null);
     this.#resetRuntime();
     renderLocation(this.#panel.locationSlot, { kind: 'blocked', reason });
     this.#renderEditor();
     this.#renderCommentForm();
+    this.#panel.refreshCopy();
   }
 
   /** 선택이 바뀌면 이전 런타임 정보와 진행 중 요청을 무효화한다. */
@@ -642,31 +676,36 @@ class EditSession {
   }
 
   /**
-   * 복사할 프롬프트 입력(FR-2·FR-3·FR-4). 변경 내역이 1건 이상이면 내역 전체(위치 없는 항목 포함),
-   * 없으면 선택 요소의 위치 정보, 둘 다 없으면 null이다. 선택 요소의 연결 여부는 따로 보지 않는다(E-6).
+   * 선택 요소 복사 입력(FR-3·INT-013 FR-12). 변경 내역 유무와 무관하게 선택 요소의 위치 정보이고,
+   * 선택이 없으면 null이다. 선택 요소의 연결 여부는 따로 보지 않는다(E-6).
    */
-  promptInput(): PromptInput | null {
-    if (this.#log.length > 0) {
-      return {
-        kind: 'changes',
-        changes: this.#log.map((c) => {
-          const props = this.#changeProps.get(changeKey(c));
-          return props === undefined ? c : { ...c, props };
-        }),
-      };
-    }
+  selectionPromptInput(): PromptInput | null {
     const el = this.#selected;
     if (!el) return null;
+    const component = this.#runtimeInfo(el);
+    // 플러그인 위치가 있으면 런타임 정보를 쓰지 않으므로 폴백 출처도 없다(NFR-1).
+    const fallbackFrom = component ? this.#runtime?.fallbackFrom : undefined;
     return {
       kind: 'selection',
       selection: {
         hint: selectorHint(el),
         located: locate(el),
         pageUrl: location.href,
-        component: this.#runtimeInfo(el),
+        component,
         ...this.#runtimeExtras(el),
+        ...(fallbackFrom ? { fallbackFrom } : {}),
       },
     };
+  }
+
+  /** 변경 내역 복사 입력(FR-2·INT-013 FR-12). 내역 전체(위치 없는 항목 포함)이고, 내역이 없으면 null이다. */
+  changesPromptInput(): PromptInput | null {
+    return changesPromptInput(this.#log, this.#changeProps);
+  }
+
+  /** 복사 버튼 활성 조건(INT-013 FR-12). */
+  copyState(): { selection: boolean; changes: boolean } {
+    return { selection: this.#selected !== null, changes: this.#log.length > 0 };
   }
 
   /** 전송 성공 정산: 보낸 항목을 내역에서 뺀다. 잠금은 onSendEnd가 푼다. */
@@ -749,11 +788,14 @@ class EditSession {
     const located = locate(el);
     const component = this.#runtimeInfo(el);
     const extras = this.#runtimeExtras(el);
+    // 플러그인 위치가 없으면 이미 받은 런타임 위치로 채운다(대기 없음, INT-013 FR-5). 결과 미도착이면 null(현행).
+    const runtime = located === null && this.#runtimeEl === el ? this.#runtime : null;
     const change: LocalChange = {
       id: newId(),
-      source: located ? { ...located.location, inherited: located.inherited, protected: located.protected } : null,
+      source: located ? { ...located.location, inherited: located.inherited, protected: located.protected } : runtimeChangeSource(runtime),
       /** 프롬프트에만 쓰는 로컬 전용 값이다(전송 시 `sendable`이 뺀다, FR-10·NFR-2). */
       ...(component ? { component } : {}),
+      ...(component && runtime?.fallbackFrom ? { fallbackFrom: runtime.fallbackFrom } : {}),
       ...(extras.instanceCount ? { instanceCount: extras.instanceCount } : {}),
       selectorHint: selectorHint(el),
       property,
@@ -805,6 +847,7 @@ class EditSession {
   #setLog(next: LocalChange[], diff: LogDiff = diffLog(this.#log, next)): void {
     this.#log = next;
     this.#renderChanges();
+    this.#panel.refreshCopy();
     this.#sync.save(diff).catch((error: unknown) =>
       this.#panel.setStatus('error', `변경 내역을 저장하지 못했습니다: ${errorMessage(error)}`),
     );
@@ -991,7 +1034,9 @@ function activate(): void {
     onSendEnd: () => current.onSendEnd(),
     verifySent: (read) => current.verifySent(read),
     canVerify: () => current.canVerify(),
-    promptInput: () => current.promptInput(),
+    selectionPromptInput: () => current.selectionPromptInput(),
+    changesPromptInput: () => current.changesPromptInput(),
+    copyState: () => current.copyState(),
     onToggleExploded: () => {
       if (!explodedView) return;
       if (explodedView.isOpen()) explodedView.close();
@@ -1005,6 +1050,8 @@ function activate(): void {
   const current = new EditSession(currentPanel);
   panel = currentPanel;
   session = current;
+  // 세션이 만들어진 뒤에만 핸들러(current)를 부를 수 있다(생성자에서 부르면 TDZ).
+  currentPanel.refreshCopy();
   document.documentElement.append(currentPanel.host);
   const isOwn = (target: EventTarget | null): boolean => target instanceof Node && currentPanel.host.contains(target);
   const currentMeasure = createMeasureOverlay({ overlayRoot: currentPanel.shadow, controls: currentPanel.measureSlot, isOwn });

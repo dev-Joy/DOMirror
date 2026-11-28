@@ -2,6 +2,7 @@ import {
   formatSourceLocation,
   type ComponentRuntimeInfo,
   type InstanceCount,
+  type LocationPrecision,
   type RuntimeSourceRef,
   type SourceLocation,
 } from '@domirror/shared';
@@ -11,6 +12,8 @@ import {
 
 /** 라인을 신뢰할 수 없을 때 표시하는 문구(FR-5·Q1(a)). */
 export const LINE_UNVERIFIED = '라인 미확인';
+/** 라인을 확인한 React 런타임 위치 표시 문구(INT-013 FR-9). */
+export const RUNTIME_LOCATION = 'React 런타임 위치';
 
 const VIA_VALUES: readonly string[] = ['plugin', 'devtools', 'fiber'];
 const PRECISION_VALUES: readonly string[] = ['exact', 'line-unverified'];
@@ -38,6 +41,24 @@ export function runtimeSourceRefOf(
   const info = runtime?.info;
   if (!info) return null;
   return runtime?.hostSource ?? info.definition ?? null;
+}
+
+export type RuntimeChangeSource = SourceLocation & { inherited: boolean; precision: LocationPrecision };
+
+/** CSS 변경 source용 런타임 위치(FR-5·E-5). 위치가 없으면 null. 폴백 위치면 inherited=true(조상 위치). protected는 생략(D-S4). */
+export function runtimeChangeSource(
+  runtime: { info?: ComponentRuntimeInfo | null; hostSource?: RuntimeSourceRef; fallbackFrom?: string } | null | undefined,
+): RuntimeChangeSource | null {
+  const ref = runtimeSourceRefOf(runtime);
+  return ref
+    ? { ...runtimeSourceLocation(ref), inherited: runtime?.fallbackFrom !== undefined, precision: ref.precision }
+    : null;
+}
+
+/** 변경 위치 뒤에 붙이는 정확도 표기(INT-013 FR-9). 미기재(빌드 플러그인 위치)면 빈 문자열이다. */
+export function precisionSuffix(precision: LocationPrecision | undefined): string {
+  if (precision === undefined) return '';
+  return precision === 'line-unverified' ? ` (${LINE_UNVERIFIED})` : ` (${RUNTIME_LOCATION})`;
 }
 
 /** owner chain은 가까운 순으로 저장되므로 계층 표시는 바깥 → 안쪽으로 뒤집는다(FR-4·FR-7). */

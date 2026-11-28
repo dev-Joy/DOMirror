@@ -10,6 +10,8 @@ export interface LocalChange extends Omit<StyleChangeInput, 'source'> {
   stale: boolean;
   /** 프롬프트에만 쓰는 런타임 컴포넌트 정보. 전송 계약에는 넣지 않는다(FR-10·NFR-2). */
   component?: ComponentRuntimeInfo;
+  /** 프롬프트 전용 폴백 출처(로컬, 전송 금지, INT-013 FR-3). */
+  fallbackFrom?: string;
 }
 
 /**
@@ -48,12 +50,12 @@ export function removeChange(log: readonly LocalChange[], id: string): LocalChan
   return log.filter((c) => c.id !== id);
 }
 
-/** 전송 대상: 위치가 있는 항목만, 로컬 전용 필드(stale·component)를 뺀 형태로. */
+/** 전송 대상: 위치가 있는 항목만, 로컬 전용 필드(stale·component·fallbackFrom)를 뺀 형태로. */
 export function sendable(log: readonly LocalChange[]): StyleChangeInput[] {
   const out: StyleChangeInput[] = [];
   for (const c of log) {
     if (c.source === null) continue;
-    const { stale: _stale, component: _component, source, ...rest } = c;
+    const { stale: _stale, component: _component, fallbackFrom: _fallbackFrom, source, ...rest } = c;
     out.push({ ...rest, source });
   }
   return out;

@@ -30,7 +30,8 @@ export function createMcpFactory(store: ChangeStore, commentStore: CommentStore)
           'Returns style changes edited in the browser that are not yet applied to source. ' +
           'Each change has the source location (file:line:column), CSS property, before value and new value. ' +
           'Changes whose source is in a protected area (shared component or design system source) carry a warning field; confirm with the user before editing the original.' +
-          ' An optional instanceCount ({count, capped}) is how many instances of the same component were rendered on the page when the change was recorded — editing the shared component changes all of them; capped=true means the scan limit was reached (read as N+).',
+          ' An optional instanceCount ({count, capped}) is how many instances of the same component were rendered on the page when the change was recorded — editing the shared component changes all of them; capped=true means the scan limit was reached (read as N+).' +
+          ' An optional source.precision tells how the location was obtained: absent = build plugin location (exact); "exact" = React runtime location with a confirmed line; "line-unverified" = React runtime estimate whose line may be off by tens of lines — confirm by file, component name and selectorHint before editing.',
         outputSchema: z.object({ changes: z.array(PendingChangeSchema) }),
         annotations: { readOnlyHint: true },
       },

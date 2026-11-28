@@ -25,7 +25,15 @@ export interface InstanceCount {
 
 export interface StyleChange {
   id: string;
-  source: { file: string; line: number; column: number; inherited: boolean; protected?: boolean };
+  source: {
+    file: string;
+    line: number;
+    column: number;
+    inherited: boolean;
+    protected?: boolean;
+    /** 미기재=빌드 플러그인 위치. exact/line-unverified=React 런타임 위치(INT-013). */
+    precision?: LocationPrecision;
+  };
   selectorHint: string;
   property: string;
   before: { authored: string | null; computed: string };

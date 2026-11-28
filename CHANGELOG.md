@@ -2,6 +2,20 @@
 
 이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, `z_skill_git_commit`이 `main`/`master` 커밋 시 버전과 함께 자동 갱신합니다.
 
+## [0.1.69] - 2026-11-28
+
+### Added
+
+- feat: CRA·UI 라이브러리 환경 React 런타임 위치 폴백과 AI 프롬프트 복사 개선 (INT-013)
+- 라이브러리 컴포넌트(MUI 등) 선택 시 `_debugOwner ?? return` 상위의 가장 가까운 프로젝트 컴포넌트 위치로 폴백하고 패널·프롬프트에 `라이브러리 컴포넌트 X → 사용처 위치` 표기
+- 빌드 플러그인 없는 앱의 CSS 변경 source를 React 런타임 위치로 채워 전송, `StyleChange.source.precision`(`exact`/`line-unverified`) 선택 필드와 서버 스키마·`list_pending_changes` 설명 반영
+- AI 프롬프트 복사 버튼을 `선택 요소 복사`·`변경 내역 복사` 2개로 분리
+
+### Changed
+
+- 피커에서 `<html>`/`<body>` 선택 차단(기존 선택 유지·안내), CRA/Webpack 번들 프레임(`/static/js/`, `.chunk.js`)은 소스 위치에서 제외
+- 프롬프트·패널 변경 위치에 ` (라인 미확인)`·` (React 런타임 위치)` 정확도 표기
+
 ## [0.1.68] - 2026-11-28
 
 ### Added
