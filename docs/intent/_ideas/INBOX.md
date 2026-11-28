@@ -6,3 +6,4 @@
 - [IDEA-20261125-01] 컴포넌트 트리 패널 ↔ 화면 양방향 선택·하위 트리 강조(부모 래퍼를 CSS 편집 대상으로 바로 선택) — 출처: react-anatomy 참고
 - [IDEA-20261125-02] 컴포넌트 이름·변경값 라벨 스크린샷 내보내기(INT-005 GitHub Issues·Slack 후속 연동 첨부용) — 출처: react-anatomy 참고
 - [IDEA-20261125-03] INT-012 후속: props 맥락 보강 — ① AI 프롬프트 자가 점검에 "변경 스타일이 props(variant·size·className 등) 조건부인지 확인하고 해당 분기만 수정할지 판단" 1줄 추가(계약 변경 0) ② 스타일 관련 prop 화이트리스트(variant·size·className)만 instanceCount와 함께 변경 내역으로 서버 전송(INT-012 Q4 일부 변경, list_pending_changes만 읽는 MCP 에이전트에 맥락 제공) ③ props 값별 인스턴스 수 분리 표시(비용 대비 효과 낮음) — 출처: INT-012 검토(서버 경로 props 부재·인스턴스 수 props 미구분)
+- [IDEA-20261128-01] React 런타임 위치(`_debugSource` 절대경로)를 프로젝트 상대경로로 정규화 — 코멘트·CSS 변경·프롬프트 공통. 우선순위 높음: 외부 AI 채팅에 프롬프트를 붙여 넣으면 홈 경로·사용자명이 노출됨. 설계 후보: `/src/` 표지 휴리스틱 / 서버 cwd 기준 상대화 / 사용자 설정값 — 출처: INT-013 R-B(CRA React 18 `_debugSource.fileName` 절대경로, INT-011부터 코멘트도 동일)

@@ -1,11 +1,11 @@
 # Intent Index
 > 이 파일은 `docs/intent/` 폴더 스캔 결과로 재작성되는 대장입니다. 직접 편집하지 않습니다.
-> Last updated: 2026-11-25
+> Last updated: 2026-11-28
 
 ## 요약
 | 상태 | planned | active | hold | done | **합계** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| 건수 | 1 | 0 | 0 | 11 | **12** |
+| 건수 | 1 | 0 | 0 | 12 | **13** |
 
 ## Planned (미착수)
 | ID | 제목 | 우선순위 | 태스크 | 갱신 |
@@ -33,4 +33,5 @@
 | [INT-009](done/INT-009-color-picker-layout-props/intent.md) | CSS 편집 패널 확장 — 컬러 피커와 flex/grid 레이아웃 속성 편집 | 2026-11-18 | 색상 필드 네이티브 피커(텍스트 병행)·flex/grid일 때만 레이아웃 컨테이너 속성 그룹(select)·display 편집 시 즉시 재구성, 계약·의존성 변경 0. Tier 2 검증 Pass(326 tests, ego-browser AC-7), 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-009-color-picker-layout-props/result.md)) |
 | [INT-010](done/INT-010-prompt-self-check-verify/intent.md) | AI 프롬프트에 자가 점검 목록·반영 결과 확인 단계 추가 | 2026-11-18 | `prompt.ts` 순수 헬퍼 `changesFooter`·`selectionFooter`로 두 모드 말미에 `## 자가 점검`·`## 반영 확인` 부착(빈 내역 제외, 시그니처·호출처·의존성 변경 0), 신규 4케이스 포함 23 passed·전체 348 passed(29 files)·lint·typecheck Exit 0, 게이트 조건부-실행 1-pass PASS_WITH_NOTES ([result.md](done/INT-010-prompt-self-check-verify/result.md)) |
 | [INT-011](done/INT-011-react-runtime-locate-prompt-fix/intent.md) | React 런타임·DevTools 연동 컴포넌트 위치 찾기와 프롬프트 기반 소스 수정 | 2026-11-20 | main world 브리지로 DevTools hook 우선·fiber 폴백 위치 탐색(컴포넌트명·정의/호출부·계층·`라인 미확인`), 코멘트 `component` optional 계약·MCP 설명·README 반영 흐름 추가. lint·typecheck·test(33 files/407 tests)·build Exit 0, 예제 브라우저 실측, 게이트 필수(하드) 2-pass PASS_WITH_NOTES(커밋 `1bdcbd3`) ([result.md](done/INT-011-react-runtime-locate-prompt-fix/result.md)) |
-| [INT-012](done/INT-012-component-props-instance-count/intent.md) | 선택 컴포넌트의 props 표시와 화면 렌더 인스턴스 수(수정 영향 범위) 안내 | 2026-11-25 | 패널·AI 프롬프트에 props 요약(민감 키 마스킹)과 fiber 기준 인스턴스 수 표시, 변경 내역 선택 필드 `instanceCount`를 `list_pending_changes`로 노출(코멘트 계약 diff 0). lint·typecheck·test(36 files/458 tests)·build exit 0, 게이트 필수(하드) 2-pass+재판정 PASS_WITH_NOTES ([result.md](done/INT-012-component-props-instance-count/result.md)) |
+| [INT-012](done/INT-012-component-props-instance-count/intent.md) | 선택 컴포넌트의 props 표시와 화면 렌더 인스턴스 수(수정 영향 범위) 안내 | 2026-11-25 | 패널·AI 프롬프트에 props 요약(민감 키 마스킹)과 fiber 기준 인스턴스 수 표시, 변경 내역 선택 필드 `instanceCount`를 `list_pending_changes`로 노출(코멘트 계약 diff 0). lint·typecheck·test(36 files/458 tests)·build exit 0, 게이트 필수(하드) 2-pass+재판정 PASS_WITH_NOTES(커밋 `6d74461`) ([result.md](done/INT-012-component-props-instance-count/result.md)) |
+| [INT-013](done/INT-013-react-runtime-fallback-prompt-ux/intent.md) | CRA·UI 라이브러리 환경 React 런타임 위치 폴백 및 AI 프롬프트 복사 개선 | 2026-11-28 | 라이브러리 컴포넌트 선택 시 상위 사용자 컴포넌트 런타임 위치 폴백, 플러그인 없는 앱의 CSS 변경 source 런타임 폴백·선택 필드 `precision` MCP 전송, 피커 `html`/`body` 차단·복사 버튼 2개 분리. lint·typecheck·test(36 files/488 passed)·build exit 0, Playwright AC-7~AC-10 Pass, 게이트 필수(하드) 2-pass PASS_WITH_NOTES(커밋 `d808cf7`) ([result.md](done/INT-013-react-runtime-fallback-prompt-ux/result.md)) |

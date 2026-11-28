@@ -53,4 +53,4 @@
 
 ## 참조
 - 요구: [intent.md](intent.md) · 명세: [spec.md](spec.md) · 계획: [plan.md](plan.md)
-- 워크로그: 미기록(사유: 저장소에 `docs/works/` 없음) · 커밋/PR: (미확정)
+- 워크로그: 미기록(사유: 저장소에 `docs/works/` 없음) · 커밋: `6d74461` — `feat: 선택 컴포넌트 props 표시와 인스턴스 수 안내 추가 (INT-012)`
